@@ -5,15 +5,13 @@ import requests
 import redis
 import rq
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 import bcrypt
 import hmac
 import hashlib
 import openai
 import google_auth_oauthlib.flow
-import googleapiclient.discovery
-import googleapiclient.errors
 import json
 
 app = Flask(__name__)
@@ -29,14 +27,14 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # DATABASE
 def get_db():
-    conn = psycopg2.connect(DB_URL)
-    return conn, conn.cursor(cursor_factory=RealDictCursor)
+    conn = psycopg.connect(DB_URL, row_factory=dict_row)
+    return conn, conn.cursor()
 
 # LOGIN
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form_form['email']
+        email = request.form['email']
         password = request.form['password'].encode()
         conn, cur = get_db()
         cur.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -84,7 +82,10 @@ def paystack_webhook():
         ref = event['data']['reference']
         amount = event['data']['amount'] / 100
         conn, cur = get_db()
-        cur.execute("INSERT INTO earnings (reference, amount, currency) VALUES (%s, %s, 'NGN')", (ref, amount))
+        cur.execute(
+            "INSERT INTO earnings (reference, amount, currency) VALUES (%s, %s, 'NGN')",
+            (ref, amount)
+        )
         conn.commit()
         conn.close()
         queue.enqueue('worker.send_telegram', f"₦{amount:,} | {ref}")
@@ -112,4 +113,4 @@ def miniapp():
     return render_template('miniapp.html', company=COMPANY)
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
