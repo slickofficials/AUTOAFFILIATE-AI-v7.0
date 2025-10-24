@@ -1,3 +1,4 @@
+gunicorn==21.2.0
 Flask==2.3.3
 redis==5.0.1
 rq==1.15.1
