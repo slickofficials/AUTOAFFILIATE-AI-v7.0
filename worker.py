@@ -3,8 +3,8 @@ import os
 import requests
 import openai
 from datetime import datetime
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 import tweepy
 import time
 import json
@@ -21,15 +21,17 @@ IFTTT_KEY = os.getenv('IFTTT_KEY')
 
 # DATABASE
 def get_db():
-    conn = psycopg2.connect(DB_URL)
-    return conn, conn.cursor(cursor_factory=RealDictCursor)
+    conn = psycopg.connect(DB_URL, row_factory=dict_row)
+    return conn, conn.cursor()
 
 # Awin Offers (REAL API)
 def get_awin_offers():
     token = os.getenv('AWIN_API_TOKEN')
     publisher_id = os.getenv('AWIN_PUBLISHER_ID')
+    if not token or not publisher_id:
+        return []
     url = f"https://productdata.awin.com/datafeed/download/apiv5/{publisher_id}/csv/"
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoAffiliateAI-v7.0"}
     try:
         r = requests.get(url, headers=headers, timeout=30)
         if r.status_code == 200:
@@ -45,13 +47,20 @@ def get_awin_offers():
                         'commission': '8%'
                     })
             return offers
-    except: pass
+    except Exception as e:
+        print(f"[AWIN] Error: {e}")
     return []
 
-# Rakuten Offers
+# Rakuten Offers (Placeholder — Add your API later)
 def get_rakuten_offers():
-    # Add your Rakuten logic here later
-    return [{'product': 'Gymshark Leggings', 'link': 'https://rakuten.link/abc123', 'image': 'https://i.imgur.com/xyz.jpg', 'commission': '12%'}]
+    return [
+        {
+            'product': 'Gymshark Leggings',
+            'link': 'https://rakuten.link/gymshark123',
+            'image': 'https://i.imgur.com/gymshark.jpg',
+            'commission': '12%'
+        }
+    ]
 
 # Generate AI Post
 def generate_post(offer):
@@ -64,7 +73,8 @@ def generate_post(offer):
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        return f"70% OFF {offer['product']}! Shop now: {offer['link']}"
+        print(f"[OPENAI] Error: {e}")
+        return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
 # Post to X
 def post_to_x(content):
@@ -74,13 +84,25 @@ def post_to_x(content):
     except Exception as e:
         print(f"[X] Failed: {e}")
 
-# Post via IFTTT (IG, TikTok, etc.)
+# Post via IFTTT
 def post_via_ifttt(platform, content, image_url):
     url = f"https://maker.ifttt.com/trigger/{platform}_post/with/key/{IFTTT_KEY}"
     data = {"value1": content, "value2": image_url}
     try:
-        requests.post(url, json=data)
+        requests.post(url, json=data, timeout=10)
         print(f"[{platform.upper()}] Sent via IFTTT")
+    except Exception as e:
+        print(f"[{platform.upper()}] IFTTT Failed: {e}")
+
+# Telegram Alert
+def send_telegram(message):
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if not bot_token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    try:
+        requests.post=url, data={'chat_id': chat_id, 'text': message})
     except: pass
 
 # MAIN CAMPAIGN
@@ -92,11 +114,12 @@ def run_daily_campaign():
         print("[BEAST] No offers found")
         return
 
-    for offer in offers[:10]:  # 10 posts
+    for offer in offers[:10]:
         content = generate_post(offer)
         post_to_x(content)
         post_via_ifttt('instagram', content, offer['image'])
         post_via_ifttt('tiktok', content, offer['image'])
-        time.sleep(30)  # Avoid rate limits
+        time.sleep(30)
 
     print("[BEAST] Campaign complete!")
+    send_telegram("Beast Campaign Complete: 10 posts live!")
