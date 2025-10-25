@@ -58,10 +58,10 @@ def dashboard():
         return redirect(url_for('login'))
     
     conn, cur = get_db()
-    cur.execute("SELECT COUNT(*) FROM posts WHERE status='sent'")
-    posts_sent = cur.fetchone()['count']
-    cur.execute("SELECT COALESCE(SUM(amount), 0) FROM earnings")
-    revenue = cur.fetchone()['coalesce']
+    cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
+    posts_sent = cur.fetchone()['post_count'] or 0
+    cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings")
+    revenue = cur.fetchone()['total_revenue'] or 0
     conn.close()
 
     return render_template('dashboard.html',
