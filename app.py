@@ -30,6 +30,11 @@ def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
+# ROOT REDIRECT TO LOGIN
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
+
 # LOGIN
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -52,7 +57,7 @@ def logout():
     return redirect(url_for('login'))
 
 # DASHBOARD
-@app.route('/')
+@app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
