@@ -1,127 +1,232 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>BEAST MODE | {{ company }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --green: #0f0;
-            --red: #f00;
-            --bg: #000;
-            --glow: 0 0 20px;
-        }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: var(--bg);
-            color: var(--green);
-            font-family: 'Rajdhani', sans-serif;
-            text-align: center;
-            padding: 20px;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-        .container {
-            max-width: 900px;
-            margin: auto;
-            padding: 20px;
-            border: 2px solid var(--green);
-            border-radius: 20px;
-            box-shadow: var(--glow) var(--green);
-            background: rgba(0, 15, 0, 0.8);
-        }
-        h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2.5em;
-            text-shadow: var(--glow) var(--green);
-            margin-bottom: 10px;
-        }
-        .stats {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-            margin: 30px 0;
-        }
-        .stat-card {
-            background: rgba(0, 255, 0, 0.1);
-            padding: 20px;
-            border-radius: 15px;
-            border: 1px solid var(--green);
-            box-shadow: var(--glow) var(--green);
-            font-size: 1.3em;
-        }
-        .stat-card h3 { color: #0f0; margin-bottom: 8px; }
-        .beast-btn {
-            background: var(--red);
-            color: #fff;
-            border: none;
-            padding: 18px 50px;
-            font-size: 1.8em;
-            font-family: 'Orbitron';
-            border-radius: 10px;
-            cursor: pointer;
-            box-shadow: var(--glow) var(--red);
-            transition: 0.3s;
-            margin: 20px 0;
-        }
-        .beast-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 40px var(--red);
-        }
-        .nav {
-            margin-top: 30px;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-        }
-        .nav a {
-            color: var(--green);
-            text-decoration: none;
-            font-size: 1.1em;
-            padding: 10px 20px;
-            border: 1px solid var(--green);
-            border-radius: 8px;
-            transition: 0.3s;
-        }
-        .nav a:hover {
-            background: var(--green);
-            color: #000;
-        }
-        .live { color: #0f0; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BEAST MODE | {{ company }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --mint: #00ffa3;
+      --aqua: #00c4ff;
+      --bg-dark: #0a0a0a;
+      --bg-glow: rgba(0, 255, 163, 0.1);
+      --white: #f3f3f3;
+      --fade: rgba(255, 255, 255, 0.05);
+    }
+
+    * {margin: 0; padding: 0; box-sizing: border-box;}
+
+    body {
+      background: radial-gradient(circle at 30% 30%, #0b0b0c, #000);
+      color: var(--white);
+      font-family: 'Rajdhani', sans-serif;
+      overflow: hidden;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      position: relative;
+    }
+
+    /* Particle Field */
+    #particles {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      background: transparent;
+      overflow: hidden;
+    }
+    .particle {
+      position: absolute;
+      background: radial-gradient(var(--mint), transparent 70%);
+      width: 3px; height: 3px;
+      border-radius: 50%;
+      animation: drift 20s linear infinite;
+      opacity: 0.4;
+    }
+    @keyframes drift {
+      from { transform: translateY(0) rotate(0); }
+      to { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    }
+
+    .container {
+      position: relative;
+      z-index: 2;
+      width: 100%;
+      max-width: 950px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 22px;
+      backdrop-filter: blur(18px);
+      box-shadow: 0 0 50px rgba(0,255,163,0.1);
+      text-align: center;
+      padding: 40px 50px;
+    }
+
+    h1 {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 3em;
+      color: var(--mint);
+      text-shadow: 0 0 20px var(--mint);
+      letter-spacing: 2px;
+    }
+
+    .live {
+      color: var(--aqua);
+      font-size: 1em;
+      margin-top: 6px;
+      animation: pulse 2s infinite;
+      letter-spacing: 2px;
+    }
+    @keyframes pulse {
+      0%, 100% {opacity: 1; text-shadow: 0 0 5px var(--aqua);}
+      50% {opacity: 0.6; text-shadow: 0 0 15px var(--aqua);}
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 30px;
+      margin: 50px 0;
+    }
+    .stat-card {
+      background: var(--fade);
+      border: 1px solid rgba(0,255,163,0.2);
+      border-radius: 15px;
+      padding: 25px;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+    .stat-card::after {
+      content: "";
+      position: absolute;
+      top: 0; left: -50%;
+      width: 200%; height: 200%;
+      background: conic-gradient(from 180deg, transparent, rgba(0,255,163,0.08), transparent);
+      animation: rotate 5s linear infinite;
+      z-index: 0;
+    }
+    @keyframes rotate {
+      from {transform: rotate(0);}
+      to {transform: rotate(360deg);}
+    }
+    .stat-card h3 {
+      color: var(--mint);
+      font-size: 1.1em;
+      margin-bottom: 8px;
+      position: relative;
+      z-index: 1;
+    }
+    .stat-card p {
+      font-size: 1.6em;
+      font-weight: bold;
+      z-index: 1;
+      position: relative;
+    }
+    .stat-card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(0,255,163,0.3);
+    }
+
+    .beast-btn {
+      background: linear-gradient(135deg, var(--mint), var(--aqua));
+      color: #000;
+      border: none;
+      padding: 18px 70px;
+      font-size: 1.5em;
+      font-family: 'Orbitron';
+      border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 0 30px rgba(0,255,163,0.3);
+      transition: all 0.3s ease;
+    }
+    .beast-btn:hover {
+      transform: scale(1.06);
+      box-shadow: 0 0 50px rgba(0,255,163,0.7);
+    }
+
+    .nav {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-top: 40px;
+    }
+    .nav a {
+      color: var(--white);
+      text-decoration: none;
+      font-size: 1.05em;
+      padding: 12px 25px;
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.02);
+      transition: all 0.3s ease;
+    }
+    .nav a:hover {
+      background: var(--mint);
+      color: #000;
+      box-shadow: 0 0 25px rgba(0,255,163,0.5);
+    }
+
+    footer {
+      margin-top: 40px;
+      font-size: 0.8em;
+      color: rgba(255,255,255,0.5);
+    }
+  </style>
 </head>
 <body>
-    <div class="container">
-        <h1>{{ company }}</h1>
-        <p class="live">● BEAST MODE ACTIVE</p>
+  <div id="particles"></div>
 
-        <div class="stats">
-            <div class="stat-card">
-                <h3>POSTS SENT</h3>
-                <p>{{ posts_sent }}</p>
-            </div>
-            <div class="stat-card">
-                <h3>TOTAL REVENUE</h3>
-                <p>₦{{ "%.2f" % revenue }}</p>
-            </div>
-            <div class="stat-card">
-                <h3>OFFERS LIVE</h3>
-                <p>12</p>
-            </div>
-            <div class="stat-card">
-                <h3>PLATFORMS</h3>
-                <p>X • IG • TikTok • YT</p>
-            </div>
-        </div>
+  <div class="container">
+    <h1>{{ company }}</h1>
+    <p class="live">● BEAST MODE ACTIVE</p>
 
-        <button class="beast-btn" onclick="location.href='/beast_campaign'">LAUNCH $100K BEAST</button>
-
-        <div class="nav">
-            <a href="/miniapp">Telegram Mini App</a>
-            <a href="/youtube_auth">YouTube Shorts</a>
-            <a href="/logout">Logout</a>
-        </div>
+    <div class="stats">
+      <div class="stat-card">
+        <h3>POSTS SENT</h3>
+        <p>{{ posts_sent }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>TOTAL REVENUE</h3>
+        <p>₦{{ "%.2f" % revenue }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>OFFERS LIVE</h3>
+        <p>12</p>
+      </div>
+      <div class="stat-card">
+        <h3>PLATFORMS</h3>
+        <p>X • IG • TikTok • YT</p>
+      </div>
     </div>
+
+    <button class="beast-btn" onclick="location.href='/beast_campaign'">LAUNCH BEAST</button>
+
+    <div class="nav">
+      <a href="/miniapp">Telegram Mini App</a>
+      <a href="/youtube_auth">🎬 Connect YouTube</a>
+      <a href="/logout">Logout</a>
+    </div>
+
+    <footer>⚙️ BEAST SYSTEM v2.0 | © {{ year }}</footer>
+  </div>
+
+  <script>
+    // Generate drifting particles
+    const container = document.getElementById("particles");
+    for (let i = 0; i < 45; i++) {
+      const p = document.createElement("div");
+      p.className = "particle";
+      p.style.left = Math.random() * 100 + "vw";
+      p.style.top = Math.random() * 100 + "vh";
+      p.style.animationDelay = Math.random() * 20 + "s";
+      container.appendChild(p);
+    }
+  </script>
 </body>
 </html>
