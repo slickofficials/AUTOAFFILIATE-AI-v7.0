@@ -11,7 +11,6 @@
       --aqua: #00c4ff;
       --bg-dark: #0a0a0a;
       --white: #f3f3f3;
-      --fade: rgba(255, 255, 255, 0.05);
     }
 
     * {margin: 0; padding: 0; box-sizing: border-box;}
@@ -20,68 +19,59 @@
       background: radial-gradient(circle at 30% 30%, #0b0b0c, #000);
       color: var(--white);
       font-family: 'Rajdhani', sans-serif;
-      overflow: hidden;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 40px;
       position: relative;
+      overflow: hidden;
     }
 
-    #particles {
+    /* Animated grid background */
+    body::before {
+      content: "";
       position: absolute;
       top: 0; left: 0;
       width: 100%; height: 100%;
+      background-image: linear-gradient(rgba(0,255,163,0.1) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0,255,163,0.1) 1px, transparent 1px);
+      background-size: 60px 60px;
+      animation: gridmove 15s linear infinite;
       z-index: 0;
-      background: transparent;
-      overflow: hidden;
-      pointer-events: none;
     }
-
-    .particle {
-      position: absolute;
-      background: radial-gradient(var(--mint), transparent 70%);
-      width: 3px; height: 3px;
-      border-radius: 50%;
-      animation: drift 20s linear infinite;
-      opacity: 0.4;
-    }
-
-    @keyframes drift {
-      from { transform: translateY(0) rotate(0); }
-      to { transform: translateY(-100vh) rotate(720deg); opacity: 0; }
+    @keyframes gridmove {
+      0% {background-position: 0 0, 0 0;}
+      100% {background-position: 60px 60px, 60px 60px;}
     }
 
     .container {
       position: relative;
       z-index: 2;
-      width: 100%;
       max-width: 950px;
       background: rgba(255,255,255,0.05);
-      border: 1px solid rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 22px;
       backdrop-filter: blur(18px);
-      box-shadow: 0 0 50px rgba(0,255,163,0.1);
+      box-shadow: 0 0 40px rgba(0,255,163,0.2);
       text-align: center;
-      padding: 40px 50px;
+      padding: 50px;
     }
 
     h1 {
       font-family: 'Orbitron', sans-serif;
       font-size: 3em;
       color: var(--mint);
-      text-shadow: 0 0 20px var(--mint);
-      letter-spacing: 2px;
+      text-shadow: 0 0 25px var(--mint);
+      margin-bottom: 10px;
     }
 
     .live {
       color: var(--aqua);
       font-size: 1em;
-      margin-top: 6px;
-      letter-spacing: 2px;
-      position: relative;
+      margin-bottom: 40px;
       animation: pulse 2s infinite;
+      letter-spacing: 2px;
     }
 
     @keyframes pulse {
@@ -89,75 +79,35 @@
       50% {opacity: 0.6; text-shadow: 0 0 15px var(--aqua);}
     }
 
-    .core-glow {
-      position: absolute;
-      top: 58%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 140px;
-      height: 140px;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(0,255,163,0.4), transparent 70%);
-      filter: blur(60px);
-      animation: corePulse 4s ease-in-out infinite;
-      z-index: 1;
-    }
-
-    @keyframes corePulse {
-      0%, 100% {transform: translate(-50%, -50%) scale(1);}
-      50% {transform: translate(-50%, -50%) scale(1.3);}
-    }
-
     .stats {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-      gap: 30px;
-      margin: 50px 0;
+      gap: 25px;
+      margin-bottom: 40px;
     }
 
     .stat-card {
-      background: var(--fade);
+      background: rgba(255,255,255,0.03);
       border: 1px solid rgba(0,255,163,0.2);
       border-radius: 15px;
       padding: 25px;
-      position: relative;
-      overflow: hidden;
       transition: all 0.3s ease;
     }
 
-    .stat-card::after {
-      content: "";
-      position: absolute;
-      top: 0; left: -50%;
-      width: 200%; height: 200%;
-      background: conic-gradient(from 180deg, transparent, rgba(0,255,163,0.08), transparent);
-      animation: rotate 5s linear infinite;
-      z-index: 0;
-    }
-
-    @keyframes rotate {
-      from {transform: rotate(0);}
-      to {transform: rotate(360deg);}
+    .stat-card:hover {
+      transform: scale(1.05);
+      box-shadow: 0 0 20px rgba(0,255,163,0.4);
     }
 
     .stat-card h3 {
       color: var(--mint);
-      font-size: 1.1em;
       margin-bottom: 8px;
-      position: relative;
-      z-index: 1;
+      font-size: 1.1em;
     }
 
     .stat-card p {
       font-size: 1.6em;
       font-weight: bold;
-      z-index: 1;
-      position: relative;
-    }
-
-    .stat-card:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 20px rgba(0,255,163,0.3);
     }
 
     .beast-btn {
@@ -171,9 +121,7 @@
       cursor: pointer;
       box-shadow: 0 0 30px rgba(0,255,163,0.3);
       transition: all 0.3s ease;
-      position: relative;
-      overflow: hidden;
-      z-index: 2;
+      margin-bottom: 25px;
     }
 
     .beast-btn:hover {
@@ -181,67 +129,21 @@
       box-shadow: 0 0 50px rgba(0,255,163,0.7);
     }
 
-    .shockwave {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 0;
-      height: 0;
-      border-radius: 50%;
-      background: radial-gradient(circle, rgba(0,255,163,0.4), transparent 70%);
-      transform: translate(-50%, -50%);
-      animation: shock 0.8s ease-out forwards;
-      pointer-events: none;
-    }
-
-    @keyframes shock {
-      from {width: 0; height: 0; opacity: 0.8;}
-      to {width: 500px; height: 500px; opacity: 0;}
-    }
-
-    .action-buttons {
-      display: flex;
-      justify-content: center;
-      gap: 20px;
-      flex-wrap: wrap;
-      margin-top: 25px;
-      position: relative;
-      z-index: 2;
-    }
-
-    .action-buttons a {
-      color: #000;
-      text-decoration: none;
-      font-size: 1.1em;
-      padding: 12px 25px;
-      border-radius: 10px;
-      font-weight: bold;
-      background: linear-gradient(135deg, var(--mint), var(--aqua));
-      box-shadow: 0 0 25px rgba(0,255,163,0.4);
-      transition: all 0.3s ease;
-    }
-
-    .action-buttons a:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 35px rgba(0,255,163,0.7);
-    }
-
     .nav {
       display: flex;
       justify-content: center;
       gap: 20px;
       flex-wrap: wrap;
-      margin-top: 40px;
     }
 
     .nav a {
       color: var(--white);
       text-decoration: none;
-      font-size: 1.05em;
-      padding: 12px 25px;
+      font-size: 1.1em;
+      padding: 12px 30px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
       border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 10px;
-      background: rgba(255,255,255,0.02);
       transition: all 0.3s ease;
     }
 
@@ -259,55 +161,40 @@
   </style>
 </head>
 <body>
-  <div id="particles"></div>
-
   <div class="container">
     <h1>{{ company }}</h1>
-    <div class="core-glow"></div>
     <p class="live">● BEAST MODE ACTIVE</p>
 
     <div class="stats">
-      <div class="stat-card"><h3>POSTS SENT</h3><p>{{ posts_sent }}</p></div>
-      <div class="stat-card"><h3>TOTAL REVENUE</h3><p>₦{{ "%.2f" % revenue }}</p></div>
-      <div class="stat-card"><h3>OFFERS LIVE</h3><p>12</p></div>
-      <div class="stat-card"><h3>PLATFORMS</h3><p>X • IG • TikTok • YT</p></div>
+      <div class="stat-card">
+        <h3>POSTS SENT</h3>
+        <p>{{ posts_sent }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>TOTAL REVENUE</h3>
+        <p>₦{{ "%.2f" % revenue }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>OFFERS LIVE</h3>
+        <p>12</p>
+      </div>
+      <div class="stat-card">
+        <h3>PLATFORMS</h3>
+        <p>X • IG • TikTok • YT</p>
+      </div>
     </div>
 
-    <button class="beast-btn" id="launchBtn">LAUNCH BEAST</button>
+    <!-- Main Launch Button -->
+    <button class="beast-btn" onclick="location.href='/beast_campaign'">LUNCH BEAST</button>
 
-    <div class="action-buttons">
-      <a href="/miniapp">💬 Telegram Mini App</a>
-      <a href="/youtube_auth">🎬 Connect YouTube</a>
-    </div>
-
+    <!-- Navigation Buttons -->
     <div class="nav">
-      <a href="/logout">Logout</a>
+      <a href="/miniapp">📱 Telegram Mini App</a>
+      <a href="/youtube_auth">🎬 Connect YouTube</a>
+      <a href="/logout">🚪 Logout</a>
     </div>
 
     <footer>⚙️ BEAST SYSTEM v2.0 | © {{ year }}</footer>
   </div>
-
-  <script>
-    // Floating particles
-    const container = document.getElementById("particles");
-    for (let i = 0; i < 45; i++) {
-      const p = document.createElement("div");
-      p.className = "particle";
-      p.style.left = Math.random() * 100 + "vw";
-      p.style.top = Math.random() * 100 + "vh";
-      p.style.animationDelay = Math.random() * 20 + "s";
-      container.appendChild(p);
-    }
-
-    // Shockwave effect
-    const launchBtn = document.getElementById("launchBtn");
-    launchBtn.addEventListener("click", e => {
-      const shock = document.createElement("div");
-      shock.classList.add("shockwave");
-      e.target.appendChild(shock);
-      setTimeout(() => shock.remove(), 900);
-      setTimeout(() => window.location.href = "/beast_campaign", 600);
-    });
-  </script>
 </body>
 </html>
