@@ -21,13 +21,13 @@
       background: radial-gradient(circle at 30% 30%, #0b0b0c, #000);
       color: var(--white);
       font-family: 'Rajdhani', sans-serif;
-      overflow: hidden;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 40px;
       position: relative;
+      overflow: hidden;
     }
 
     /* Particle Field */
@@ -38,6 +38,7 @@
       z-index: 0;
       background: transparent;
       overflow: hidden;
+      pointer-events: none; /* ✅ lets clicks pass through */
     }
     .particle {
       position: absolute;
@@ -68,7 +69,7 @@
 
     h1 {
       font-family: 'Orbitron', sans-serif;
-      font-size: 3em;
+      font-size: 2.5em;
       color: var(--mint);
       text-shadow: 0 0 20px var(--mint);
       letter-spacing: 2px;
@@ -101,19 +102,6 @@
       overflow: hidden;
       transition: all 0.3s ease;
     }
-    .stat-card::after {
-      content: "";
-      position: absolute;
-      top: 0; left: -50%;
-      width: 200%; height: 200%;
-      background: conic-gradient(from 180deg, transparent, rgba(0,255,163,0.08), transparent);
-      animation: rotate 5s linear infinite;
-      z-index: 0;
-    }
-    @keyframes rotate {
-      from {transform: rotate(0);}
-      to {transform: rotate(360deg);}
-    }
     .stat-card h3 {
       color: var(--mint);
       font-size: 1.1em;
@@ -127,10 +115,6 @@
       z-index: 1;
       position: relative;
     }
-    .stat-card:hover {
-      transform: scale(1.05);
-      box-shadow: 0 0 20px rgba(0,255,163,0.3);
-    }
 
     .beast-btn {
       background: linear-gradient(135deg, var(--mint), var(--aqua));
@@ -143,7 +127,7 @@
       cursor: pointer;
       box-shadow: 0 0 30px rgba(0,255,163,0.3);
       transition: all 0.3s ease;
-      margin-bottom: 35px;
+      margin-bottom: 30px;
     }
     .beast-btn:hover {
       transform: scale(1.06);
@@ -153,9 +137,9 @@
     .nav {
       display: flex;
       justify-content: center;
-      gap: 20px;
       flex-wrap: wrap;
-      margin-top: 10px;
+      gap: 20px;
+      margin-top: 20px;
     }
     .nav a {
       color: var(--white);
@@ -206,7 +190,7 @@
       </div>
     </div>
 
-    <button class="beast-btn" onclick="location.href='/beast_campaign'">LAUNCH BEAST</button>
+    <button class="beast-btn" onclick="location.href='/beast_campaign'">LUNCH BEAST</button>
 
     <div class="nav">
       <a href="/miniapp">Telegram Mini App</a>
@@ -214,13 +198,12 @@
       <a href="/logout">Logout</a>
     </div>
 
-    <footer>⚙️ BEAST SYSTEM v2.0 | © {{ year }}</footer>
+    <footer>⚙️ BEAST SYSTEM v7.3 | © {{ company }}</footer>
   </div>
 
   <script>
-    // Generate drifting particles
     const container = document.getElementById("particles");
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 40; i++) {
       const p = document.createElement("div");
       p.className = "particle";
       p.style.left = Math.random() * 100 + "vw";
