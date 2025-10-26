@@ -1,4 +1,4 @@
-# app.py - v7.1 $1M/MONTH EMPIRE (FULLY UPDATED + YOUTUBE SECURE)
+# app.py - v7.3 $1M/MONTH EMPIRE (HEADLESS YOUTUBE + TELEGRAM + RENDER SAFE)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
@@ -81,16 +81,15 @@ def dashboard():
 @app.route('/beast_campaign')
 def beast_campaign():
     queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v7.1 $1M BEAST MODE ACTIVATED'})
+    return jsonify({'status': 'v7.3 $1M BEAST MODE ACTIVATED'})
 
-# YOUTUBE AUTH - SECURE VIA ENV VAR (NO client_secrets.json IN REPO)
+# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
-        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
+        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS missing in Render Env</h1>"
 
-    # Write to temp file (safe in Render container)
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
         temp_path = f.name
@@ -98,17 +97,55 @@ def youtube_auth():
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
             temp_path,
-            scopes=['https://www.googleapis.com/auth/youtube.upload']
+            scopes=['https://www.googleapis.com/auth/youtube.upload'],
+            redirect_uri=f"https://{request.host}/youtube_callback"
         )
-        creds = flow.run_local_server(port=0)
-        with open('youtube_token.json', 'w') as f:
-            f.write(creds.to_json())
-        os.unlink(temp_path)  # Delete temp file
-        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Shorts Auto-Upload ON</h1>"
+        auth_url, _ = flow.authorization_url(prompt='consent')
+        os.unlink(temp_path)
+        return f'''
+        <div style="background:#000;color:#0f0;font-family:Orbitron;text-align:center;padding:50px;">
+            <h1>CONNECT YOUTUBE</h1>
+            <p>Click below to authorize (opens in new tab):</p>
+            <a href="{auth_url}" target="_blank">
+                <button style="padding:18px 40px;background:#f00;color:#fff;border:none;font-size:1.3em;cursor:pointer;border-radius:10px;">
+                    AUTHORIZE NOW
+                </button>
+            </a>
+            <p><small>After allowing, you'll be redirected back.</small></p>
+        </div>
+        '''
     except Exception as e:
         if os.path.exists(temp_path):
             os.unlink(temp_path)
-        return f"<h1 style='color:red;font-family:Orbitron'>Auth Failed: {str(e)}</h1>"
+        return f"<h1 style='color:red'>Setup Failed: {str(e)}</h1>"
+
+@app.route('/youtube_callback')
+def youtube_callback():
+    code = request.args.get('code')
+    if not code:
+        return "<h1 style='color:red;font-family:Orbitron'>Auth Denied</h1>"
+
+    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(secrets_json)
+        temp_path = f.name
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            temp_path,
+            scopes=['https://www.googleapis.com/auth/youtube.upload'],
+            redirect_uri=f"https://{request.host}/youtube_callback"
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        with open('youtube_token.json', 'w') as f:
+            f.write(creds.to_json())
+        os.unlink(temp_path)
+        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Auto-Upload ACTIVE</h1>"
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
 # MINI APP
 @app.route('/miniapp')
