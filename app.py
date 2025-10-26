@@ -60,7 +60,7 @@ def logout():
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     try:
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
@@ -71,12 +71,19 @@ def dashboard():
     except Exception as e:
         posts_sent = 0
         revenue = 0.0
+        print("⚠️ DB ERROR:", str(e))
 
-    return render_template('dashboard.html',
-                         posts_sent=posts_sent,
-                         revenue=revenue,
-                         company=COMPANY)
+    # 🧠 This line will tell us which dashboard.html Flask is actually using
+    path = os.path.abspath('templates/dashboard.html')
+    print("🔥 DASHBOARD TEMPLATE IN USE:", path)
 
+    return render_template(
+        'dashboard.html',
+        posts_sent=posts_sent,
+        revenue=revenue,
+        company=COMPANY
+    )
+    
 # BEAST CAMPAIGN
 @app.route('/beast_campaign')
 def beast_campaign():
