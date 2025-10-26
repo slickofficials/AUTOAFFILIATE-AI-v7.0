@@ -1,4 +1,4 @@
-# app.py - v7.0 $100K/MONTH EMPIRE
+# app.py - v7.1 $1M/MONTH EMPIRE (FULLY UPDATED + YOUTUBE SECURE)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
@@ -9,6 +9,9 @@ import bcrypt
 import hmac
 import hashlib
 import openai
+import json
+import tempfile
+from google_auth_oauthlib.flow import InstalledAppFlow
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
@@ -78,7 +81,39 @@ def dashboard():
 @app.route('/beast_campaign')
 def beast_campaign():
     queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v7.0 $100K MODE ACTIVATED'})
+    return jsonify({'status': 'v7.1 $1M BEAST MODE ACTIVATED'})
+
+# YOUTUBE AUTH - SECURE VIA ENV VAR (NO client_secrets.json IN REPO)
+@app.route('/youtube_auth')
+def youtube_auth():
+    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
+    if not secrets_json:
+        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
+
+    # Write to temp file (safe in Render container)
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(secrets_json)
+        temp_path = f.name
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            temp_path,
+            scopes=['https://www.googleapis.com/auth/youtube.upload']
+        )
+        creds = flow.run_local_server(port=0)
+        with open('youtube_token.json', 'w') as f:
+            f.write(creds.to_json())
+        os.unlink(temp_path)  # Delete temp file
+        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Shorts Auto-Upload ON</h1>"
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return f"<h1 style='color:red;font-family:Orbitron'>Auth Failed: {str(e)}</h1>"
+
+# MINI APP
+@app.route('/miniapp')
+def miniapp():
+    return render_template('miniapp.html', company=COMPANY)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
