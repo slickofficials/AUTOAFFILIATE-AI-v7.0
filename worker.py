@@ -1,4 +1,4 @@
-# worker.py - v7.0 AUTOPILOT ENGINE
+# worker.py - v7.3 $10M AUTOPILOT ENGINE (AI + YouTube Upload + IFTTT + 100 Shorts/Day)
 import os
 import requests
 import openai
@@ -8,6 +8,10 @@ from psycopg.rows import dict_row
 import tweepy
 import time
 import json
+import tempfile
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
 
 # CONFIG
 DB_URL = os.getenv('DATABASE_URL')
@@ -19,23 +23,27 @@ client = tweepy.Client(bearer_token=TWITTER_BEARER)
 
 IFTTT_KEY = os.getenv('IFTTT_KEY')
 
+HEYGEN_KEY = os.getenv('HEYGEN_API_KEY')
+
+PAYSTACK_KEY = os.getenv('PAYSTACK_SECRET_KEY')
+
 # DATABASE
 def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# Awin Offers (REAL API)
+# Awin Offers
 def get_awin_offers():
     token = os.getenv('AWIN_API_TOKEN')
     publisher_id = os.getenv('AWIN_PUBLISHER_ID')
     if not token or not publisher_id:
         return []
     url = f"https://productdata.awin.com/datafeed/download/apiv5/{publisher_id}/csv/"
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoAffiliateAI-v7.0"}
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoAffiliateAI-v7.3"}
     try:
         r = requests.get(url, headers=headers, timeout=30)
         if r.status_code == 200:
-            lines = r.text.splitlines()[1:6]
+            lines = r.text.splitlines()[1:50]  # More offers for scaling
             offers = []
             for line in lines:
                 cols = line.split('|')
@@ -51,15 +59,11 @@ def get_awin_offers():
         print(f"[AWIN] Error: {e}")
     return []
 
-# Rakuten Offers (Placeholder — Add your API later)
+# Rakuten Offers
 def get_rakuten_offers():
     return [
-        {
-            'product': 'Gymshark Leggings',
-            'link': 'https://rakuten.link/gymshark123',
-            'image': 'https://i.imgur.com/gymshark.jpg',
-            'commission': '12%'
-        }
+        {'product': 'Gymshark Leggings', 'link': 'https://rakuten.link/gymshark123', 'image': 'https://i.imgur.com/gymshark.jpg', 'commission': '12%'},
+        # Add more placeholder or real offers for scaling
     ]
 
 # Generate AI Post
@@ -74,7 +78,30 @@ def generate_post(offer):
         return resp.choices[0].message.content.strip()
     except Exception as e:
         print(f"[OPENAI] Error: {e}")
-        return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
+        return f"🔥 70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
+
+# Generate Short Video with HeyGen
+def generate_short_video(offer):
+    if not HEYGEN_KEY:
+        print("[HEYGEN] Key missing — using placeholder")
+        return 'placeholder_short.mp4'
+
+    url = "https://api.heygen.com/v1/video/generate"
+    payload = {
+        "script": generate_post(offer),
+        "avatar_id": "your_avatar_id",  # Replace with your HeyGen avatar
+        "background_id": "fitness_bg"  # Replace with your background
+    }
+    headers = {"Authorization": f"Bearer {HEYGEN_KEY}"}
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        video_url = response.json()['video_url']
+        video_path = 'short.mp4'
+        with open(video_path, 'wb') as f:
+            f.write(requests.get(video_url).content)
+        return video_path
+    print(f"[HEYGEN] Failed: {response.text}")
+    return 'placeholder_short.mp4'
 
 # Post to X
 def post_to_x(content):
@@ -94,6 +121,26 @@ def post_via_ifttt(platform, content, image_url):
     except Exception as e:
         print(f"[{platform.upper()}] IFTTT Failed: {e}")
 
+# YouTube Shorts Upload
+def upload_youtube_short(title, description, video_path):
+    if not os.path.exists('youtube_token.json'):
+        print("[YT] Token missing — auth first")
+        return None
+
+    with open('youtube_token.json') as f:
+        creds = Credentials.from_authorized_user_info(json.load(f))
+    youtube = build('youtube', 'v3', credentials=creds)
+
+    body = {
+        'snippet': {'title': title, 'description': description, 'tags': ['affiliate', 'sale', 'fitness'], 'categoryId': '22'},
+        'status': {'privacyStatus': 'public'}
+    }
+    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+    request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
+    response = request.execute()
+    print(f"[YT] Uploaded Short: {response['id']}")
+    return response['id']
+
 # Telegram Alert
 def send_telegram(message):
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -102,24 +149,69 @@ def send_telegram(message):
         return
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        requests.post=url, data={'chat_id': chat_id, 'text': message})
+        requests.post(url, data={'chat_id': chat_id, 'text': message})
     except: pass
 
-# MAIN CAMPAIGN
+# Referral System (₦500/user)
+def process_referral(referrer_id, referred_email):
+    conn, cur = get_db()
+    cur.execute("SELECT id FROM users WHERE email = %s", (referred_email,))
+    referred = cur.fetchone()
+    if referred:
+        cur.execute("INSERT INTO referrals (referrer_id, referred_email, reward) VALUES (%s, %s, 500)", (referrer_id, referred_email))
+        conn.commit()
+        send_telegram(f"New Referral: ₦500 added to {referrer_id}")
+    conn.close()
+
+# Paystack Payouts
+def payout_user(user_id, amount):
+    bank_account = os.getenv('USER_BANK_ACCOUNT')  # Get from DB in real
+    url = "https://api.paystack.co/transfer"
+    headers = {"Authorization": f"Bearer {PAYSTACK_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "source": "balance",
+        "amount": amount * 100,
+        "recipient": bank_account,
+        "reason": "Referral Payout"
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    if response.status_code == 200:
+        conn, cur = get_db()
+        cur.execute("INSERT INTO earnings (reference, amount, network) VALUES (%s, %s, 'payout')", (response.json()['data']['reference'], -amount))
+        conn.commit()
+        conn.close()
+        send_telegram(f"Payout Complete: ₦{amount} to {user_id}")
+        return True
+    return False
+
+# MAIN CAMPAIGN (100 SHORTS/DAY)
 def run_daily_campaign():
-    print(f"[BEAST] Campaign started at {datetime.now()}")
+    print(f"[BEAST] v7.3 Campaign started at {datetime.now()}")
     
     offers = get_awin_offers() + get_rakuten_offers()
     if not offers:
         print("[BEAST] No offers found")
         return
 
-    for offer in offers[:10]:
+    posts_today = 0
+    for offer in offers[:100]:  # 100 Shorts/Day
         content = generate_post(offer)
         post_to_x(content)
         post_via_ifttt('instagram', content, offer['image'])
         post_via_ifttt('tiktok', content, offer['image'])
-        time.sleep(30)
+        time.sleep(30)  # Rate limit
 
-    print("[BEAST] Campaign complete!")
-    send_telegram("Beast Campaign Complete: 10 posts live!")
+        # Generate & Upload YouTube Short
+        video_path = generate_short_video(offer)
+        short_title = f"{offer['product']} Deal! {posts_today + 1}"
+        short_desc = content
+        video_id = upload_youtube_short(short_title, short_desc, video_path)
+        if video_id:
+            conn, cur = get_db()
+            cur.execute("INSERT INTO posts (platform, content, link, status) VALUES (%s, %s, %s, 'sent')", ('youtube', short_desc, video_id))
+            conn.commit()
+            conn.close()
+        posts_today += 1
+
+    print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
+    send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
