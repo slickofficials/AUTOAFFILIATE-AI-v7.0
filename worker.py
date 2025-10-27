@@ -81,26 +81,30 @@ def generate_post(offer):
         return f"🔥 70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
 # Generate Short Video with HeyGen
+# In worker.py — generate_short_video()
 def generate_short_video(offer):
-    if not HEYGEN_KEY:
-        print("[HEYGEN] Key missing — using placeholder")
+    heygen_key = os.getenv('HEYGEN_API_KEY')
+    if not heygen_key:
         return 'placeholder_short.mp4'
-
+    
     url = "https://api.heygen.com/v1/video/generate"
     payload = {
-        "script": generate_post(offer),
-        "avatar_id": "your_avatar_id",  # Replace with your HeyGen avatar
-        "background_id": "fitness_bg"  # Replace with your background
+        "script": generate_post(offer)[:500],
+        "avatar_id": "Daisy",  # Your avatar
+        "background_id": "gym_bg",
+        "voice_id": "en_us_1"
     }
-    headers = {"Authorization": f"Bearer {HEYGEN_KEY}"}
-    response = requests.post(url, json=payload, headers=headers)
-    if response.status_code == 200:
-        video_url = response.json()['video_url']
-        video_path = 'short.mp4'
-        with open(video_path, 'wb') as f:
-            f.write(requests.get(video_url).content)
-        return video_path
-    print(f"[HEYGEN] Failed: {response.text}")
+    headers = {"Authorization": f"Bearer {heygen_key}"}
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=30)
+        if r.status_code == 200:
+            video_url = r.json()['data']['video_url']
+            path = f"short_{int(time.time())}.mp4"
+            with open(path, 'wb') as f:
+                f.write(requests.get(video_url).content)
+            return path
+    except Exception as e:
+        print(f"[HEYGEN] Error: {e}")
     return 'placeholder_short.mp4'
 
 # Post to X
