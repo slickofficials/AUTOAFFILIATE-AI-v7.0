@@ -190,7 +190,7 @@
 
         <div style="text-align:center;">
             <div class="btn btn-red" onclick="launchBeast()" style="display:inline-block; font-size:1.8em; padding:25px 50px;">
-                LUCK BEAST
+                ACTIVATE BEAST
             </div>
         </div>
 
@@ -199,7 +199,22 @@
             <a href="/youtube_auth">YouTube Shorts</a>
             <a href="/logout">Logout</a>
         </div>
-
+     <div class="stat-card">
+    <h3>REFERRALS</h3>
+    <p>{{ referrals }} users</p>
+</div>
+        
+<div class="stat-card">
+    <h3>REF EARNINGS</h3>
+    <p>₦{{ "%.2f" % ref_earnings }}</p>
+</div>
+<h3>Recent Referrals</h3>
+<ul>
+    {% for ref in ref_list %}
+    <li>{{ ref['referred_email'] }} - ₦{{ "%.2f" % ref['reward'] }} on {{ ref['created_at'] }}</li>
+    {% endfor %}
+</ul>
+        
         <div class="terminal" id="terminal">
             > System idle... Awaiting BEAST activation...
         </div>
