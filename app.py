@@ -1,17 +1,18 @@
-# app.py - v7.4 $10M EMPIRE (FULL HEYGEN + YOUTUBE + REFERRAL DASH + EMAIL UPSELL)
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+# app.py - v7.4 $10M EMPIRE (HEYGEN + YOUTUBE TWEAK + REFERRAL DASH + AUTO-EMAIL UPSELL)
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
 import rq
 import psycopg
 from psycopg.rows import dict_row
 import bcrypt
+import hmac
+import hashlib
 import openai
 import json
 import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
-import requests
-from datetime import datetime
+import requests  # For Mailchimp upsell
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
@@ -55,7 +56,7 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
-# DASHBOARD
+# DASHBOARD (WITH REFERRAL DASH)
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
@@ -66,35 +67,39 @@ def dashboard():
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
         posts_sent = cur.fetchone()['post_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings")
         revenue = cur.fetchone()['total_revenue'] or 0
         cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
         referrals = cur.fetchone()['ref_count'] or 0
         cur.execute("SELECT COALESCE(SUM(reward), 0) as ref_earnings FROM referrals WHERE referrer_id = %s", (user_id,))
         ref_earnings = cur.fetchone()['ref_earnings'] or 0
+        cur.execute("SELECT referred_email, reward, created_at FROM referrals WHERE referrer_id = %s ORDER BY created_at DESC LIMIT 10", (user_id,))
+        ref_list = cur.fetchall()
         conn.close()
     except Exception as e:
         posts_sent = revenue = referrals = ref_earnings = 0
+        ref_list = []
 
     return render_template('dashboard.html',
                          posts_sent=posts_sent,
                          revenue=revenue,
                          referrals=referrals,
                          ref_earnings=ref_earnings,
+                         ref_list=ref_list,
                          company=COMPANY)
 
 # BEAST CAMPAIGN
 @app.route('/beast_campaign')
 def beast_campaign():
-    queue.enqueue('worker.run_daily_campaign', job_timeout=7200)
-    return jsonify({'status': 'v7.4 100 SHORTS/DAY ACTIVATED'})
+    queue.enqueue('worker.run_daily_campaign')
+    return jsonify({'status': 'v7.4 $10M BEAST MODE ACTIVATED'})
 
-# YOUTUBE AUTH - HEADLESS
+# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
-        return "<h1 style='color:red'>ERROR: GOOGLE_CLIENT_SECRETS missing</h1>"
+        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
@@ -151,67 +156,21 @@ def youtube_callback():
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
-# REFERRAL SYSTEM
-@app.route('/refer', methods=['POST'])
-def refer():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Login required'})
+# MINI APP
+@app.route('/miniapp')
+def miniapp():
+    return render_template('miniapp.html', company=COMPANY)
 
-    referred_email = request.json['email']
-    referrer_id = session['user_id']
-
-    conn, cur = get_db()
-    cur.execute("SELECT id FROM users WHERE email = %s", (referred_email,))
-    referred = cur.fetchone()
-
-    if referred:
-        cur.execute("INSERT INTO referrals (referrer_id, referred_email, reward) VALUES (%s, %s, 500)", (referrer_id, referred_email))
-        conn.commit()
-        conn.close()
-        queue.enqueue('worker.send_referral_reward', referrer_id, 500)
-        return jsonify({'status': 'Referral added! ₦500 pending'})
-    
-    conn.close()
-    return jsonify({'error': 'User not found'})
-
-# PAYSTACK PAYOUT
-@app.route('/payout', methods=['POST'])
-def payout():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Login required'})
-
-    amount = request.json['amount']
-    bank_account = request.json['bank_account']
-    paystack_key = os.getenv('PAYSTACK_SECRET_KEY')
-    url = "https://api.paystack.co/transfer"
-    headers = {"Authorization": f"Bearer {paystack_key}", "Content-Type": "application/json"}
-    payload = {
-        "source": "balance",
-        "amount": amount * 100,
-        "recipient": bank_account,
-        "reason": "Affiliate Payout"
-    }
-
-    response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        user_id = session['user_id']
-        conn, cur = get_db()
-        cur.execute("INSERT INTO earnings (user_id, reference, amount, network) VALUES (%s, %s, %s, 'payout')", 
-                    (user_id, response.json()['data']['reference'], -amount))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'Payout initiated'})
-    
-    return jsonify({'error': 'Payout failed: ' + response.text})
-
-# AUTO-EMAIL UPSELL (Mailchimp)
+# AUTO-EMAIL UPSELL (MAILCHIMP)
 @app.route('/upsell', methods=['POST'])
 def upsell():
     email = request.json['email']
     mailchimp_key = os.getenv('MAILCHIMP_API_KEY')
     list_id = os.getenv('MAILCHIMP_LIST_ID')
+    if not mailchimp_key or not list_id:
+        return jsonify({'error': 'Mailchimp not configured'})
     url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
-    headers = {"Authorization": f"apikey {mailchimp_key}"}
+    headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
     payload = {
         "email_address": email,
         "status": "subscribed",
@@ -219,26 +178,8 @@ def upsell():
     }
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
-        return jsonify({'status': 'Upsell email sent!'})
-    return jsonify({'error': 'Email failed'})
-
-@app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
-    
-@app.route('/terms')
-def terms():
-    return render_template('terms.html')
-    
-# MINI APP
-@app.route('/miniapp')
-def miniapp():
-    return render_template('miniapp.html', company=COMPANY)
-
-# STATIC FILES
-@app.route('/static/<path:path>')
-def send_static(path):
-    return send_from_directory('static', path)
+        return jsonify({'status': 'VIP Upsell Email Sent!'})
+    return jsonify({'error': 'Email failed: ' + response.text})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
