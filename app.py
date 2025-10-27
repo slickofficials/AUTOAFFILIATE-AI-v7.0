@@ -147,6 +147,10 @@ def youtube_callback():
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
+    
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
