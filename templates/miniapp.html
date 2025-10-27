@@ -2,20 +2,132 @@
 <html>
 <head>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
     <style>
-        body { background: #000; color: #0f0; font-family: Orbitron; text-align: center; padding: 50px; }
-        button { background: #f00; color: #fff; padding: 15px 30px; font-size: 1.5em; border: none; border-radius: 10px; }
+        :root {
+            --mint: #00ffa3;
+            --aqua: #00c4ff;
+        }
+        body {
+            background: radial-gradient(circle at 30% 30%, #0b0b0c, #000);
+            color: #fff;
+            font-family: 'Rajdhani', sans-serif;
+            text-align: center;
+            padding: 40px;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 650px;
+            margin: auto;
+            padding: 40px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(0,255,163,0.2);
+            border-radius: 22px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 0 40px rgba(0,255,163,0.2);
+            margin-bottom: 40px;
+        }
+        h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5em;
+            color: var(--mint);
+            text-shadow: 0 0 20px var(--mint);
+            margin-bottom: 15px;
+        }
+        p {
+            font-size: 1.2em;
+            margin: 12px 0;
+        }
+        #link {
+            font-weight: bold;
+            color: var(--aqua);
+            word-break: break-all;
+        }
+        .beast-btn {
+            background: linear-gradient(135deg, var(--mint), var(--aqua));
+            color: #000;
+            border: none;
+            padding: 15px 35px;
+            font-size: 1.5em;
+            font-family: 'Orbitron';
+            border-radius: 15px;
+            cursor: pointer;
+            box-shadow: 0 0 25px rgba(0,255,163,0.4);
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+        .beast-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 50px rgba(0,255,163,0.7);
+        }
+        .upsell-inputs {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-top: 15px;
+        }
+        #upsell_email {
+            flex: 1;
+            min-width: 180px;
+            padding: 12px 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(0,255,163,0.2);
+            font-size: 1em;
+            background: rgba(255,255,255,0.05);
+            color: #fff;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+        #upsell_email:focus {
+            border-color: var(--mint);
+            box-shadow: 0 0 10px rgba(0,255,163,0.5);
+        }
     </style>
 </head>
 <body>
-    <h1>₦500 PER REFERRAL</h1>
-    <p>Share your link:</p>
-    <p id="link"></p>
-    <button onclick="Telegram.WebApp.share()">Share Now</button>
+
+    <!-- Referral Section -->
+    <div class="container">
+        <h1>₦500 PER REFERRAL</h1>
+        <p>Share your referral link:</p>
+        <p id="link"></p>
+        <button class="beast-btn" onclick="Telegram.WebApp.share()">Share Now</button>
+    </div>
+
+    <!-- VIP Upsell Section -->
+    <div class="container">
+        <p>Want $10k/mo? Join our VIP list:</p>
+        <div class="upsell-inputs">
+            <input type="email" id="upsell_email" placeholder="your@email.com">
+            <button class="beast-btn" onclick="upsell()">Get VIP Access</button>
+        </div>
+    </div>
+
     <script>
+        // Referral link
         const user = Telegram.WebApp.initDataUnsafe.user;
         const link = `https://t.me/slickbeastbot?start=${user.id}`;
         document.getElementById('link').innerText = link;
+
+        // VIP Upsell function
+        async function upsell() {
+            const email = document.getElementById('upsell_email').value.trim();
+            if (!email) return alert("Please enter a valid email.");
+            try {
+                const response = await fetch('/upsell', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({email: email})
+                });
+                const data = await response.json();
+                alert(data.status || data.error || "Something went wrong!");
+                if(data.status) document.getElementById('upsell_email').value = '';
+            } catch(err) {
+                alert("Error: " + err.message);
+            }
+        }
     </script>
+
 </body>
 </html>
