@@ -222,6 +222,14 @@ def upsell():
         return jsonify({'status': 'Upsell email sent!'})
     return jsonify({'error': 'Email failed'})
 
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+    
+@app.route('/terms')
+def terms():
+    return render_template('terms.html')
+    
 # MINI APP
 @app.route('/miniapp')
 def miniapp():
