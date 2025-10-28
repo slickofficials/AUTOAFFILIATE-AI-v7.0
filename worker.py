@@ -14,14 +14,25 @@ import redis
 import rq
 from openai import OpenAI
 
-# CONFIG
-DB_URL = os.getenv('DATABASE_URL')
+# === DEBUG: PRINT ALL KEYS ON START ===
+print("\n[DEBUG] LOADING ENVIRONMENT VARIABLES...\n")
+
+# OpenAI
 OPENAI_KEY = os.getenv('OPENAI_API_KEY')
-openai_client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
+print(f"[OPENAI] Key: {'SET' if OPENAI_KEY else 'MISSING'}")
 
-# === TWITTER CLIENT WITH DEBUG ===
-print("[TWITTER] Loading keys from environment...")
+# YouTube
+YOUTUBE_JSON = os.getenv('YOUTUBE_TOKEN_JSON')
+if YOUTUBE_JSON:
+    try:
+        yt = json.loads(YOUTUBE_JSON)
+        print(f"[YT] Token loaded: refresh_token={'YES' if 'refresh_token' in yt else 'NO'}, client_id={'YES' if 'client_id' in yt else 'NO'}")
+    except:
+        print("[YT] Invalid JSON in YOUTUBE_TOKEN_JSON")
+else:
+    print("[YT] YOUTUBE_TOKEN_JSON: MISSING")
 
+# Twitter
 TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
 TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
 TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
@@ -34,9 +45,12 @@ print(f"[TWITTER] ACCESS_TOKEN: {'SET' if TWITTER_ACCESS_TOKEN else 'MISSING'}")
 print(f"[TWITTER] ACCESS_SECRET: {'SET' if TWITTER_ACCESS_SECRET else 'MISSING'}")
 print(f"[TWITTER] BEARER: {'SET' if TWITTER_BEARER else 'MISSING'}")
 
+# === INIT CLIENTS ===
+openai_client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
+
 if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
     print("[TWITTER] MISSING KEYS → POSTING DISABLED")
-    client = tweepy.Client(bearer_token=TWITTER_BEARER)  # Read-only
+    client = tweepy.Client(bearer_token=TWITTER_BEARER)
 else:
     print("[TWITTER] ALL KEYS OK → POSTING ENABLED")
     client = tweepy.Client(
@@ -59,22 +73,19 @@ def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# === 500 SHORTS/DAY CAMPAIGN ===
+# === CAMPAIGN ===
 def run_daily_campaign():
-    print(f"[BEAST] v7.4 Campaign started at {datetime.now()}")
+    print(f"\n[BEAST] v7.4 Campaign STARTED at {datetime.now()}\n")
     
-    offers = get_awin_offers() + get_rakuten_offers()
-    if not offers:
-        print("[BEAST] No offers found")
-        return
-
+    offers = get_rakuten_offers()  # Using test offer
     posts_today = 0
-    for offer in offers[:500]:
+
+    for offer in offers[:1]:  # Test with 1
         content = generate_post(offer)
         post_to_x(content)
         post_via_ifttt('instagram', content, offer['image'])
         post_via_ifttt('tiktok', content, offer['image'])
-        time.sleep(5)
+        time.sleep(3)
 
         video_path = generate_short_video(offer)
         short_title = f"{offer['product']} Deal! #{posts_today + 1}"
@@ -90,47 +101,26 @@ def run_daily_campaign():
             conn.close()
         posts_today += 1
 
-    print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
-    send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
+    print(f"\n[BEAST] Campaign COMPLETE! {posts_today} posts sent\n")
+    send_telegram(f"Beast Complete: {posts_today} posts live! $10M Mode ON")
 
-# === OFFERS ===
-def get_awin_offers():
-    token = os.getenv('AWIN_API_TOKEN')
-    publisher_id = os.getenv('AWIN_PUBLISHER_ID')
-    if not token or not publisher_id:
-        return []
-    url = f"https://productdata.awin.com/datafeed/download/apiv5/{publisher_id}/csv/"
-    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoAffiliateAI-v7.4"}
-    try:
-        r = requests.get(url, headers=headers, timeout=30)
-        if r.status_code == 200:
-            lines = r.text.splitlines()[1:100]
-            offers = []
-            for line in lines:
-                cols = line.split('|')
-                if len(cols) > 5:
-                    offers.append({
-                        'product': cols[1],
-                        'link': cols[3],
-                        'image': cols[5],
-                        'commission': '8%'
-                    })
-            return offers
-    except Exception as e:
-        print(f"[AWIN] Error: {e}")
-    return []
-
+# === TEST OFFER ===
 def get_rakuten_offers():
     return [
-        {'product': 'Gymshark Leggings', 'link': 'https://rakuten.link/gymshark123', 'image': 'https://i.imgur.com/gymshark.jpg', 'commission': '12%'},
+        {
+            'product': 'Gymshark Flex Leggings',
+            'link': 'https://rakuten.com/r/SLICKO8?eeid=28187',
+            'image': 'https://i.imgur.com/9Z3XKpM.jpeg',
+            'commission': '12%'
+        },
     ]
 
-# === OPENAI v1 WITH FALLBACK ===
+# === OPENAI ===
 def generate_post(offer):
     if not openai_client:
-        print("[OPENAI] No API key → using fallback")
+        print("[OPENAI] No key → fallback post")
         return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
-
+    
     prompt = f"Write a 150-char viral affiliate post for {offer['product']} at {offer['commission']} commission. Use emojis, urgency, CTA. Link: {offer['link']}"
     try:
         response = openai_client.chat.completions.create(
@@ -144,46 +134,25 @@ def generate_post(offer):
         print(f"[OPENAI] Error: {e}")
         return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
-# === HEYGEN VIDEO ===
+# === HEYGEN ===
 def generate_short_video(offer):
-    if not HEYGEN_KEY:
-        return 'placeholder_short.mp4'
-    url = "https://api.heygen.com/v1/video/generate"
-    payload = {
-        "script": generate_post(offer)[:500],
-        "avatar_id": "Daisy",
-        "background_id": "gym_bg",
-        "voice_id": "en_us_1"
-    }
-    headers = {"Authorization": f"Bearer {HEYGEN_KEY}"}
-    try:
-        r = requests.post(url, json=payload, headers=headers, timeout=30)
-        if r.status_code == 200:
-            video_url = r.json()['data']['video_url']
-            path = f"short_{int(time.time())}.mp4"
-            with open(path, 'wb') as f:
-                f.write(requests.get(video_url).content)
-            return path
-    except Exception as e:
-        print(f"[HEYGEN] Error: {e}")
-    return 'placeholder_short.mp4'
+    return 'placeholder_short.mp4'  # Skip real video for test
 
-# === POST TO X ===
+# === X POST ===
 def post_to_x(content):
     content = content[:280]
     try:
         response = client.create_tweet(text=content)
         tweet_id = response.data['id']
         print(f"[X] Posted: https://x.com/i/web/status/{tweet_id}")
-    except tweepy.Unauthorized:
-        print("[X] UNAUTHORIZED: Check API keys")
-    except tweepy.Forbidden:
-        print("[X] FORBIDDEN: App needs 'Tweet write' permission")
     except Exception as e:
         print(f"[X] Failed: {e}")
 
 # === IFTTT ===
 def post_via_ifttt(platform, content, image_url):
+    if not IFTTT_KEY:
+        print(f"[{platform.upper()}] IFTTT_KEY missing")
+        return
     url = f"https://maker.ifttt.com/trigger/{platform}_post/with/key/{IFTTT_KEY}"
     data = {"value1": content, "value2": image_url}
     try:
@@ -192,19 +161,17 @@ def post_via_ifttt(platform, content, image_url):
     except Exception as e:
         print(f"[{platform.upper()}] IFTTT Failed: {e}")
 
-# === YOUTUBE UPLOAD WITH TOKEN VALIDATION ===
+# === YOUTUBE ===
 def upload_youtube_short(title, description, video_path):
-    token_json = os.getenv('YOUTUBE_TOKEN_JSON')
-    if not token_json:
+    if not YOUTUBE_JSON:
         print(f"[YT] No token → skipping: {title}")
         return None
 
     try:
-        token_data = json.loads(token_json)
-        required = ['refresh_token', 'client_id', 'client_secret']
-        missing = [k for k in required if k not in token_data]
+        token_data = json.loads(YOUTUBE_JSON)
+        missing = [k for k in ['refresh_token', 'client_id', 'client_secret'] if k not in token_data]
         if missing:
-            print(f"[YT] Token missing fields: {missing}")
+            print(f"[YT] Token missing: {missing}")
             return None
 
         creds = Credentials.from_authorized_user_info(token_data)
@@ -242,14 +209,14 @@ def send_telegram(message):
     except:
         pass
 
-# === SCHEDULE TRIAL CHECK ===
+# === RQ ===
 try:
     from tasks import check_trials
     queue.enqueue_in(timedelta(minutes=5), check_trials)
 except Exception as e:
-    print(f"[RQ] Task import failed: {e}")
+    print(f"[RQ] Import failed: {e}")
 
-# Run campaign on startup
+# === RUN ===
 if __name__ == '__main__':
-    print("[BEAST] Starting v7.4 $10M Autopilot Engine...")
+    print("\n[BEAST] Starting v7.4 $10M Autopilot Engine...\n")
     run_daily_campaign()
