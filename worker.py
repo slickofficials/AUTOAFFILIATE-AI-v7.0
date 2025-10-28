@@ -66,31 +66,6 @@ def run_daily_campaign():
     print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
     send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
 
-# === 7-DAY TRIAL AUTO-CHARGE ===
-def check_trials():
-    print("[TRIAL] Checking expired trials...")
-    conn, cur = get_db()
-    cur.execute("SELECT * FROM saas_users WHERE status = 'trial' AND created_at < NOW() - INTERVAL '7 days'")
-    expired = cur.fetchall()
-    for user in expired:
-        if not user.paystack_customer_code:
-            cur.execute("UPDATE saas_users SET status = 'expired' WHERE id = %s", (user.id,))
-            continue
-        url = "https://api.paystack.co/subscription"
-        headers = {"Authorization": f"Bearer {PAYSTACK_KEY}"}
-        payload = {"customer": user.paystack_customer_code, "plan": "PLN_monthly_150k"}
-        r = requests.post(url, json=payload, headers=headers)
-        if r.status_code == 200:
-            sub_code = r.json()['data']['subscription_code']
-            cur.execute("UPDATE saas_users SET status = 'active', paystack_subscription_code = %s WHERE id = %s", (sub_code, user.id))
-            send_telegram(f"Auto-charged: {user.email} → ₦150k/mo")
-        else:
-            cur.execute("UPDATE saas_users SET status = 'expired' WHERE id = %s", (user.id,))
-    conn.commit()
-    conn.close()
-    # Reschedule
-    queue.enqueue_in(timedelta(days=1), check_trials)
-
 # === REST OF YOUR ORIGINAL FUNCTIONS (unchanged) ===
 def get_awin_offers():
     token = os.getenv('AWIN_API_TOKEN')
@@ -201,5 +176,13 @@ def send_telegram(message):
         requests.post(url, data={'chat_id': chat_id, 'text': message})
     except: pass
 
-# Schedule trial check
+# === SCHEDULE TRIAL CHECK ===
+from tasks import check_trials
+
+# Kick off the first check in 5 minutes
 queue.enqueue_in(timedelta(minutes=5), check_trials)
+
+# Optional: Run campaign on startup (only if running locally or testing)
+if __name__ == '__main__':
+    print("[BEAST] Starting v7.4 $10M Autopilot Engine...")
+    run_daily_campaign()
