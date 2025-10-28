@@ -155,6 +155,47 @@ def youtube_callback():
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
+# PAYSTACK WEBHOOK (AUTO-ACTIVATE + 7-DAY TRIAL)
+@app.route('/paystack/webhook', methods=['POST'])
+def paystack_webhook():
+    payload = request.data
+    sig = request.headers.get('x-paystack-signature')
+    secret = os.getenv('PAYSTACK_SECRET_KEY')
+    if not sig or not secret or hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest() != sig:
+        return 'Unauthorized', 401
+
+    event = request.json
+    conn, cur = get_db()
+
+    if event['event'] == 'subscription.create':
+        sub_code = event['data']['subscription_code']
+        customer_code = event['data']['customer']['customer_code']
+        amount = event['data']['amount'] / 100
+        cur.execute("UPDATE saas_users SET paystack_subscription_code = %s, status = 'active', amount = %s WHERE paystack_customer_code = %s", (sub_code, amount, customer_code))
+        conn.commit()
+        queue.enqueue('worker.send_welcome_email', customer_code)
+        conn.close()
+        return jsonify({'status': 'Subscription activated'})
+    
+    elif event['event'] == 'charge.success':
+        reference = event['data']['reference']
+        amount = event['data']['amount'] / 100
+        customer_code = event['data']['customer']['customer_code']
+        cur.execute("INSERT INTO saas_payments (user_id, reference, amount, status) VALUES ((SELECT id FROM saas_users WHERE paystack_customer_code = %s), %s, %s, 'success')", (customer_code, reference, amount))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'Payment logged'})
+    
+    elif event['event'] == 'subscription.disable':
+        sub_code = event['data']['subscription_code']
+        cur.execute("UPDATE saas_users SET status = 'expired' WHERE paystack_subscription_code = %s", (sub_code,))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'Subscription disabled'})
+
+    conn.close()
+    return jsonify({'status': 'OK'})
+    
 @app.route('/terms')
 def terms():
     return render_template('terms.html')
