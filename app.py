@@ -195,7 +195,11 @@ def paystack_webhook():
 
     conn.close()
     return jsonify({'status': 'OK'})
-    
+   
+@app.route('/google3493eb0a7a8abb0f.html')
+def google_verify():
+    return "google-site-verification: google3493eb0a7a8abb0f.html"
+
 @app.route('/terms')
 def terms():
     return render_template('terms.html')
