@@ -1,0 +1,28 @@
+<!-- templates/saas/login.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SaaS Login</title>
+  <style>
+    body { background:#000; color:#0f0; font-family: 'Courier New'; text-align:center; padding:50px; }
+    input, button { padding:12px; margin:10px; width:300px; font-size:1.1em; }
+    button { background:#0f0; color:#000; border:none; cursor:pointer; }
+    a { color:#0f0; }
+  </style>
+</head>
+<body>
+  <h1>WHITE-LABEL SAAS</h1>
+  <h2>Client Login</h2>
+  <form method="POST">
+    <input type="email" name="email" placeholder="Email" required><br>
+    <input type="password" name="password" placeholder="Password" required><br>
+    <button type="submit">LOGIN</button>
+  </form>
+  <p><a href="/saas/register">Create Account</a></p>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <p style="color:#f00;">{{ messages[0] }}</p>
+    {% endif %}
+  {% endwith %}
+</body>
+</html>
