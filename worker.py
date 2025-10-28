@@ -1,27 +1,32 @@
 # worker.py - v7.4 $10M AUTOPILOT ENGINE (500 Shorts/Day + Trial Auto-Charge)
 import os
 import requests
-import openai
+import json
 from datetime import datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
 import tweepy
 import time
-import json
-import tempfile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
 import redis
 import rq
+from openai import OpenAI  # v1 API
 
 # CONFIG
 DB_URL = os.getenv('DATABASE_URL')
 OPENAI_KEY = os.getenv('OPENAI_API_KEY')
-openai.api_key = OPENAI_KEY
+openai_client = OpenAI(api_key=OPENAI_KEY)
 
-TWITTER_BEARER = os.getenv('TWITTER_BEARER_TOKEN')
-client = tweepy.Client(bearer_token=TWITTER_BEARER)
+# Twitter OAuth 1.0a (required for posting)
+client = tweepy.Client(
+    consumer_key=os.getenv('TWITTER_API_KEY'),
+    consumer_secret=os.getenv('TWITTER_API_SECRET'),
+    access_token=os.getenv('TWITTER_ACCESS_TOKEN'),
+    access_token_secret=os.getenv('TWITTER_ACCESS_SECRET'),
+    bearer_token=os.getenv('TWITTER_BEARER_TOKEN')
+)
 
 IFTTT_KEY = os.getenv('IFTTT_KEY')
 HEYGEN_KEY = os.getenv('HEYGEN_API_KEY')
@@ -45,12 +50,12 @@ def run_daily_campaign():
         return
 
     posts_today = 0
-    for offer in offers[:500]:  # 500 Shorts/Day
+    for offer in offers[:500]:
         content = generate_post(offer)
         post_to_x(content)
         post_via_ifttt('instagram', content, offer['image'])
         post_via_ifttt('tiktok', content, offer['image'])
-        time.sleep(5)  # Faster rate limit
+        time.sleep(5)
 
         video_path = generate_short_video(offer)
         short_title = f"{offer['product']} Deal! #{posts_today + 1}"
@@ -58,7 +63,10 @@ def run_daily_campaign():
         video_id = upload_youtube_short(short_title, short_desc, video_path)
         if video_id:
             conn, cur = get_db()
-            cur.execute("INSERT INTO posts (platform, content, link, status) VALUES (%s, %s, %s, 'sent')", ('youtube', short_desc, video_id))
+            cur.execute(
+                "INSERT INTO posts (platform, content, link, status) VALUES (%s, %s, %s, 'sent')",
+                ('youtube', short_desc, f"https://youtu.be/{video_id}")
+            )
             conn.commit()
             conn.close()
         posts_today += 1
@@ -66,7 +74,7 @@ def run_daily_campaign():
     print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
     send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
 
-# === REST OF YOUR ORIGINAL FUNCTIONS (unchanged) ===
+# === OFFERS ===
 def get_awin_offers():
     token = os.getenv('AWIN_API_TOKEN')
     publisher_id = os.getenv('AWIN_PUBLISHER_ID')
@@ -98,19 +106,22 @@ def get_rakuten_offers():
         {'product': 'Gymshark Leggings', 'link': 'https://rakuten.link/gymshark123', 'image': 'https://i.imgur.com/gymshark.jpg', 'commission': '12%'},
     ]
 
+# === OPENAI v1 ===
 def generate_post(offer):
     prompt = f"Write a 150-char viral affiliate post for {offer['product']} at {offer['commission']} commission. Use emojis, urgency, CTA. Link: {offer['link']}"
     try:
-        resp = openai.ChatCompletion.create(
+        response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=80
+            max_tokens=80,
+            temperature=0.8
         )
-        return resp.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"[OPENAI] Error: {e}")
         return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
+# === HEYGEN VIDEO ===
 def generate_short_video(offer):
     if not HEYGEN_KEY:
         return 'placeholder_short.mp4'
@@ -134,13 +145,15 @@ def generate_short_video(offer):
         print(f"[HEYGEN] Error: {e}")
     return 'placeholder_short.mp4'
 
+# === POST TO X ===
 def post_to_x(content):
     try:
-        client.create_tweet(text=content[:280])
+        response = client.create_tweet(text=content[:280])
         print(f"[X] Posted: {content[:50]}...")
     except Exception as e:
         print(f"[X] Failed: {e}")
 
+# === IFTTT ===
 def post_via_ifttt(platform, content, image_url):
     url = f"https://maker.ifttt.com/trigger/{platform}_post/with/key/{IFTTT_KEY}"
     data = {"value1": content, "value2": image_url}
@@ -150,22 +163,39 @@ def post_via_ifttt(platform, content, image_url):
     except Exception as e:
         print(f"[{platform.upper()}] IFTTT Failed: {e}")
 
+# === YOUTUBE UPLOAD (ENV VAR) ===
 def upload_youtube_short(title, description, video_path):
-    if not os.path.exists('youtube_token.json'):
+    token_json = os.getenv('YOUTUBE_TOKEN_JSON')
+    if not token_json:
+        print(f"[YT] No token in env → skipping: {title}")
         return None
-    with open('youtube_token.json') as f:
-        creds = Credentials.from_authorized_user_info(json.load(f))
-    youtube = build('youtube', 'v3', credentials=creds)
-    body = {
-        'snippet': {'title': title, 'description': description, 'tags': ['affiliate', 'sale'], 'categoryId': '22'},
-        'status': {'privacyStatus': 'public'}
-    }
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
-    response = request.execute()
-    print(f"[YT] Uploaded: {response['id']}")
-    return response['id']
 
+    try:
+        token_data = json.loads(token_json)
+        creds = Credentials.from_authorized_user_info(token_data)
+        youtube = build('youtube', 'v3', credentials=creds)
+
+        body = {
+            'snippet': {
+                'title': title,
+                'description': description,
+                'tags': ['affiliate', 'sale', 'shorts'],
+                'categoryId': '22'
+            },
+            'status': {'privacyStatus': 'public'}
+        }
+
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
+        response = request.execute()
+        video_id = response['id']
+        print(f"[YT] Uploaded: https://youtu.be/{video_id}")
+        return video_id
+    except Exception as e:
+        print(f"[YT] Upload failed: {e}")
+        return None
+
+# === TELEGRAM ===
 def send_telegram(message):
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
@@ -173,8 +203,9 @@ def send_telegram(message):
         return
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        requests.post(url, data={'chat_id': chat_id, 'text': message})
-    except: pass
+        requests.post(url, data={'chat_id': chat_id, 'text': message}, timeout=10)
+    except:
+        pass
 
 # === SCHEDULE TRIAL CHECK ===
 from tasks import check_trials
