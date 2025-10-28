@@ -1,4 +1,4 @@
-# app.py - v7.4 $10M EMPIRE (HEYGEN + YOUTUBE TWEAK + REFERRAL DASH + AUTO-EMAIL UPSELL)
+# app.py - v7.4 $10M EMPIRE (HEYGEN + YOUTUBE + WHITE-LABEL SAAS)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
@@ -12,7 +12,12 @@ import openai
 import json
 import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
-import requests  # For Mailchimp upsell
+import requests
+
+# === MOUNT WHITE-LABEL SAAS (7 LINES) ===
+from saas.auth import auth_bp as saas_auth_bp
+from saas.billing import billing_bp
+from saas.main import main_bp as saas_main_bp
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
@@ -56,12 +61,11 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
-# DASHBOARD (WITH REFERRAL DASH)
+# DASHBOARD
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
     user_id = session['user_id']
     try:
         conn, cur = get_db()
@@ -79,7 +83,6 @@ def dashboard():
     except Exception as e:
         posts_sent = revenue = referrals = ref_earnings = 0
         ref_list = []
-
     return render_template('dashboard.html',
                          posts_sent=posts_sent,
                          revenue=revenue,
@@ -94,17 +97,15 @@ def beast_campaign():
     queue.enqueue('worker.run_daily_campaign')
     return jsonify({'status': 'v7.4 $10M BEAST MODE ACTIVATED'})
 
-# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
+# YOUTUBE AUTH
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
         return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
-
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
         temp_path = f.name
-
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
             temp_path,
@@ -133,12 +134,10 @@ def youtube_callback():
     code = request.args.get('code')
     if not code:
         return "<h1 style='color:red'>Auth Denied</h1>"
-
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
         temp_path = f.name
-
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
             temp_path,
@@ -163,13 +162,11 @@ def terms():
 @app.route('/privacy')
 def privacy():
     return render_template('privacy.html')
-    
-# MINI APP
+
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html', company=COMPANY)
 
-# AUTO-EMAIL UPSELL (MAILCHIMP)
 @app.route('/upsell', methods=['POST'])
 def upsell():
     email = request.json['email']
@@ -179,15 +176,16 @@ def upsell():
         return jsonify({'error': 'Mailchimp not configured'})
     url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
     headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
-    payload = {
-        "email_address": email,
-        "status": "subscribed",
-        "tags": ["affiliate", "beast-mode"]
-    }
+    payload = {"email_address": email, "status": "subscribed", "tags": ["affiliate"]}
     response = requests.post(url, headers=headers, json=payload)
     if response.status_code == 200:
         return jsonify({'status': 'VIP Upsell Email Sent!'})
-    return jsonify({'error': 'Email failed: ' + response.text})
+    return jsonify({'error': 'Email failed'})
+
+# === MOUNT WHITE-LABEL SAAS (7 LINES) ===
+app.register_blueprint(saas_auth_bp, url_prefix='/saas')
+app.register_blueprint(billing_bp, url_prefix='/saas')
+app.register_blueprint(saas_main_bp, url_prefix='/saas')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
