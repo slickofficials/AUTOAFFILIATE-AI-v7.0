@@ -1,0 +1,41 @@
+<!-- templates/saas/billing.html -->
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Subscribe - {{ user.subdomain }}.yoursaas.com</title>
+  <script src="https://js.paystack.co/v1/inline.js"></script>
+  <style>
+    body { background:#000; color:#0f0; font-family: 'Courier New'; text-align:center; padding:50px; }
+    button { padding:15px 40px; background:#0f0; color:#000; border:none; font-size:1.3em; cursor:pointer; margin:20px; }
+  </style>
+</head>
+<body>
+  <h1>SUBSCRIBE NOW</h1>
+  <h2>₦150,000 / month</h2>
+  <p>100 AI Shorts / day • Auto-YouTube • Affiliate Dashboard</p>
+  <button onclick="payWithPaystack()">PAY WITH PAYSTACK</button>
+
+  <script>
+    function payWithPaystack() {
+      let handler = PaystackPop.setup({
+        key: '{{ key }}',
+        email: '{{ user.email }}',
+        amount: 15000000, // ₦150,000 in kobo
+        ref: 'saas_' + Math.floor((Math.random() * 1000000000) + 1),
+        onClose: function(){ alert('Window closed.'); },
+        callback: function(response){
+          fetch('/saas/subscribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({reference: response.reference})
+          }).then(r => r.json()).then(d => {
+            alert(d.status || d.error);
+            if (d.status) window.location = '/saas/dashboard';
+          });
+        }
+      });
+      handler.openIframe();
+    }
+  </script>
+</body>
+</html>
