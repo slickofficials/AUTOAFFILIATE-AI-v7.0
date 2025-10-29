@@ -1,17 +1,17 @@
-# worker.py - v7.5 $10M AUTOPILOT (ERROR RETRY + 500 SHORTS/DAY)
+# worker.py - v7.5 $10M AUTOPILOT ENGINE (ERROR RETRY + 500 SHORTS/DAY)
 import os
 import requests
 import openai
 from datetime import datetime
 import psycopg
-from psycopg.rows = dict_row
+from psycopg.rows import dict_row
 import tweepy
 import time
 import json
 import tempfile
-from googleapiclient.discovery = build
-from googleapiclient.http = MediaFileUpload
-from google.oauth2.credentials = Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
 
 # CONFIG (ALL YOUR KEYS INTEGRATED)
 DB_URL = os.getenv('DATABASE_URL')
@@ -87,12 +87,11 @@ def get_awin_offers():
 
 # Rakuten Offers
 def get_rakuten_offers():
-    url = "https://api.rakutenmarketing.com/offers/1.0"  # From docs
-    headers = {"Authorization": f"Bearer {RAKUTEN_WEBSERVICES_TOKEN}"}
+    url = "https://api.rakutenc.com/affiliate/offers"  # Example endpoint
+    headers = {"Authorization": f"Bearer {RAKUTEN_WEBSERVICES_TOKEN}", "Content-Type": "application/json"}
     params = {
         "client_id": RAKUTEN_CLIENT_ID,
-        "client_secret": RAKUTEN_SECURITY_TOKEN,
-        "scope_id": os.getenv('RAKUTEN_SCOPE_ID')
+        "client_secret": RAKUTEN_SECURITY_TOKEN
     }
     try:
         r = requests.get(url, headers=headers, params=params, timeout=30)
@@ -108,7 +107,7 @@ def get_rakuten_offers():
                 })
             return offers
     except Exception as e:
-        print(f"[RAKUTEN] Error: {e}")
+        print(f"[RAKUTEN] Error: {e})
     return []
 
 # Generate AI Post
@@ -123,7 +122,7 @@ def generate_post(offer):
         return resp.choices[0].message.content.strip()
     except Exception as e:
         print(f"[OPENAI] Error: {e}")
-        return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
+        return f"🔥 70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
 # Generate Short Video with HeyGen (Error Retry)
 def generate_short_video(offer):
@@ -197,8 +196,8 @@ def send_telegram(message):
 
 # MAIN CAMPAIGN (500 SHORTS/DAY)
 def run_daily_campaign():
-    print(f"[BEAST] v7.5 Campaign started at {datetime.now()} — 500 Shorts/Day")
-
+    print(f"[BEAST] v7.5 Campaign started at {datetime.now()}")
+    
     offers = get_awin_offers() + get_rakuten_offers()
     if not offers:
         print("[BEAST] No offers found")
@@ -225,23 +224,3 @@ def run_daily_campaign():
 
     print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
     send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
-
-# === SAAS 7-DAY TRIAL AUTO-CHARGE ===
-def check_trials():
-    conn, cur = get_db()
-    cur.execute("SELECT * FROM saas_users WHERE status = 'trial' AND created_at < NOW() - INTERVAL '7 days'")
-    expired = cur.fetchall()
-    for user in expired:
-        url = "https://api.paystack.co/subscription"
-        headers = {"Authorization": f"Bearer {PAYSTACK_SECRET_KEY}"}
-        payload = {"customer": user['paystack_customer_code'], "plan": "PLN_autopro_150k"}
-        r = requests.post(url, json=payload, headers=headers)
-        if r.status_code == 200:
-            cur.execute("UPDATE saas_users SET status = 'active', paystack_subscription_code = %s WHERE id = %s", (r.json()['data']['subscription_code'], user['id']))
-        else:
-            cur.execute("UPDATE saas_users SET status = 'expired' WHERE id = %s", (user['id']))
-    conn.commit()
-    conn.close()
-
-# Schedule daily
-queue.enqueue_in(timedelta(days=1), check_trials)
