@@ -159,6 +159,12 @@ def youtube_callback():
 @app.route('/terms')
 def terms():
     return render_template('terms.html')
+
+from flask import Flask, render_template
+
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html') 
 from flask import Flask, render_template
 
 app = Flask(__name__)
@@ -166,10 +172,6 @@ app = Flask(__name__)
 @app.route('/')
 def home():
     return render_template('index.html') 
-
-@app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
 
 @app.route('/miniapp')
 def miniapp():
