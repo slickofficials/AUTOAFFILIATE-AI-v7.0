@@ -14,11 +14,6 @@ import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 import requests
 
-# === MOUNT WHITE-LABEL SAAS (7 LINES) ===
-from saas.auth import auth_bp as saas_auth_bp
-from saas.billing import billing_bp
-from saas.main import main_bp as saas_main_bp
-
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
 COMPANY = "Slickofficials HQ | Amson Multi Global LTD"
@@ -61,11 +56,12 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
-# DASHBOARD
+# DASHBOARD (WITH REFERRAL DASH)
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     user_id = session['user_id']
     try:
         conn, cur = get_db()
@@ -83,6 +79,7 @@ def dashboard():
     except Exception as e:
         posts_sent = revenue = referrals = ref_earnings = 0
         ref_list = []
+
     return render_template('dashboard.html',
                          posts_sent=posts_sent,
                          revenue=revenue,
@@ -97,15 +94,17 @@ def beast_campaign():
     queue.enqueue('worker.run_daily_campaign')
     return jsonify({'status': 'v7.4 $10M BEAST MODE ACTIVATED'})
 
-# YOUTUBE AUTH
+# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
         return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
+
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
         temp_path = f.name
+
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
             temp_path,
@@ -134,10 +133,12 @@ def youtube_callback():
     code = request.args.get('code')
     if not code:
         return "<h1 style='color:red'>Auth Denied</h1>"
+
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
         temp_path = f.name
+
     try:
         flow = InstalledAppFlow.from_client_secrets_file(
             temp_path,
@@ -154,51 +155,6 @@ def youtube_callback():
         if os.path.exists(temp_path):
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
-
-# PAYSTACK WEBHOOK (AUTO-ACTIVATE + 7-DAY TRIAL)
-@app.route('/paystack/webhook', methods=['POST'])
-def paystack_webhook():
-    payload = request.data
-    sig = request.headers.get('x-paystack-signature')
-    secret = os.getenv('PAYSTACK_SECRET_KEY')
-    if not sig or not secret or hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest() != sig:
-        return 'Unauthorized', 401
-
-    event = request.json
-    conn, cur = get_db()
-
-    if event['event'] == 'subscription.create':
-        sub_code = event['data']['subscription_code']
-        customer_code = event['data']['customer']['customer_code']
-        amount = event['data']['amount'] / 100
-        cur.execute("UPDATE saas_users SET paystack_subscription_code = %s, status = 'active', amount = %s WHERE paystack_customer_code = %s", (sub_code, amount, customer_code))
-        conn.commit()
-        queue.enqueue('worker.send_welcome_email', customer_code)
-        conn.close()
-        return jsonify({'status': 'Subscription activated'})
-    
-    elif event['event'] == 'charge.success':
-        reference = event['data']['reference']
-        amount = event['data']['amount'] / 100
-        customer_code = event['data']['customer']['customer_code']
-        cur.execute("INSERT INTO saas_payments (user_id, reference, amount, status) VALUES ((SELECT id FROM saas_users WHERE paystack_customer_code = %s), %s, %s, 'success')", (customer_code, reference, amount))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'Payment logged'})
-    
-    elif event['event'] == 'subscription.disable':
-        sub_code = event['data']['subscription_code']
-        cur.execute("UPDATE saas_users SET status = 'expired' WHERE paystack_subscription_code = %s", (sub_code,))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': 'Subscription disabled'})
-
-    conn.close()
-    return jsonify({'status': 'OK'})
-   
-@app.route('/google3493eb0a7a8abb0f.html')
-def google_verify():
-    return "google-site-verification: google3493eb0a7a8abb0f.html"
 
 @app.route('/terms')
 def terms():
@@ -227,10 +183,39 @@ def upsell():
         return jsonify({'status': 'VIP Upsell Email Sent!'})
     return jsonify({'error': 'Email failed'})
 
-# === MOUNT WHITE-LABEL SAAS (7 LINES) ===
-app.register_blueprint(saas_auth_bp, url_prefix='/saas')
-app.register_blueprint(billing_bp, url_prefix='/saas')
-app.register_blueprint(saas_main_bp, url_prefix='/saas')
+# === PAYSTACK WEBHOOK (AUTO-ACTIVATE) ===
+@app.route('/paystack/webhook', methods=['POST'])
+def paystack_webhook():
+    payload = request.data
+    sig = request.headers.get('x-paystack-signature')
+    secret = os.getenv('PAYSTACK_SECRET_KEY')
+    if not sig or not secret or hmac.new(secret.encode(), payload, hashlib.sha512).hexdigest() != sig:
+        return 'Unauthorized', 401
+
+    event = request.json
+    conn, cur = get_db()
+
+    if event['event'] == 'subscription.create':
+        sub_code = event['data']['subscription_code']
+        customer_code = event['data']['customer']['customer_code']
+        amount = event['data']['amount'] / 100
+        cur.execute("UPDATE saas_users SET paystack_subscription_code = %s, status = 'active', amount = %s WHERE paystack_customer_code = %s", (sub_code, amount, customer_code))
+        conn.commit()
+        queue.enqueue('worker.send_welcome_email', customer_code)
+        conn.close()
+        return jsonify({'status': 'Subscription activated'})
+
+    elif event['event'] == 'charge.success':
+        reference = event['data']['reference']
+        amount = event['data']['amount'] / 100
+        customer_code = event['data']['customer']['customer_code']
+        cur.execute("INSERT INTO saas_payments (user_id, reference, amount, status) VALUES ((SELECT id FROM saas_users WHERE paystack_customer_code = %s), %s, %s, 'success')", (customer_code, reference, amount))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'Payment logged'})
+
+    conn.close()
+    return jsonify({'status': 'OK'})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
