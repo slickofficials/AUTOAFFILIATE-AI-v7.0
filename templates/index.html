@@ -1,31 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Slickofficials | Amson Multi Global LTD</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Welcome | {{ company }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@500;700;800&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg: #000;
+            --text: #f5f5f7;
+            --accent: #00d4ff;
+            --card: rgba(30,30,30,0.7);
+            --link: #00d4ff;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            font-family: Arial, sans-serif;
-            background-color: #0b0b0c;
-            color: #fff;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'SF Pro Display', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
             text-align: center;
-            padding: 60px;
+            padding: 20px;
         }
-        a {
-            color: #00ffa3;
+        .logo {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(90deg, #00d4ff, #00ff9d);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 16px;
+        }
+        h1 {
+            font-size: 2.8rem;
+            font-weight: 700;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 1.3rem;
+            max-width: 600px;
+            margin: 0 auto 40px;
+            color: #aaa;
+            line-height: 1.6;
+        }
+        .btn {
+            padding: 18px 50px;
+            background: linear-gradient(135deg, #00d4ff, #00ff9d);
+            color: #000;
+            font-weight: 700;
+            font-size: 1.3rem;
+            border-radius: 16px;
             text-decoration: none;
-            font-weight: bold;
+            display: inline-block;
+            box-shadow: 0 10px 30px rgba(0,212,255,0.3);
+            transition: all 0.3s ease;
         }
-        a:hover {
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 40px rgba(0,212,255,0.4);
+        }
+        footer {
+            margin-top: 60px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        footer a {
+            color: var(--link);
+            text-decoration: none;
+            margin: 0 8px;
+            font-weight: 500;
+        }
+        footer a:hover {
             text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .logo { font-size: 2.8rem; }
+            h1 { font-size: 2.2rem; }
+            .btn { font-size: 1.1rem; padding: 16px 40px; }
         }
     </style>
 </head>
 <body>
-    <h1>Welcome to Slickofficials</h1>
-    <p>Powered by <strong>Amson Multi Global LTD</strong></p>
-    <p>Connecting innovation and automation for global creators.</p>
-    <p><a href="/privacy">📜 View our Privacy Policy</a></p>
+    <div class="logo">AUTOAFFILIATE AI</div>
+    <h1>Build Your $10M Empire on Autopilot</h1>
+    <p>500 AI Shorts Daily • X • IG • TikTok • YouTube • White-Label SaaS • Paystack Auto-Charge</p>
+    <a href="/login" class="btn">GET STARTED</a>
+    
+    <footer>
+        <p>
+            © 2025 {{ company }}<br>
+            <a href="/privacy">Privacy Policy</a> • 
+            <a href="/terms">Terms of Service</a>
+        </p>
+    </footer>
 </body>
-</html> 
+</html>
