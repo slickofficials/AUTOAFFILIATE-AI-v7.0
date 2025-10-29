@@ -178,18 +178,8 @@ def dashboard():
     return render_template('dashboard.html') 
 @app.route('/privacy')
 def privacy():
-    return render_template('privacy.html') 
-from flask import Flask, render_template
+    return render_template('privacy.html')  
 
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return render_template('index.html') 
-
-@app.route('/privacy')
-def privacy():
-    return render_template('privacy.html')
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html', company=COMPANY)
