@@ -1,4 +1,4 @@
-# app.py - v7.4 $10M EMPIRE (HEYGEN + YOUTUBE + WHITE-LABEL SAAS)
+# app.py - v7.4 $10M EMPIRE (FIXED: ONE FLASK APP)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
@@ -14,6 +14,7 @@ import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 import requests
 
+# === ONE FLASK APP ONLY ===
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
 COMPANY = "Slickofficials HQ | Amson Multi Global LTD"
@@ -56,7 +57,7 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
-# DASHBOARD (WITH REFERRAL DASH)
+# DASHBOARD
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
@@ -94,12 +95,12 @@ def beast_campaign():
     queue.enqueue('worker.run_daily_campaign')
     return jsonify({'status': 'v7.4 $10M BEAST MODE ACTIVATED'})
 
-# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
+# YOUTUBE AUTH
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
-        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set in Render Env</h1>"
+        return "<h1 style='color:red;font-family:Orbitron'>ERROR: GOOGLE_CLIENT_SECRETS not set</h1>"
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
         f.write(secrets_json)
@@ -150,40 +151,26 @@ def youtube_callback():
         with open('youtube_token.json', 'w') as f:
             f.write(creds.to_json())
         os.unlink(temp_path)
-        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Auto-Upload ACTIVE</h1>"
+        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected!</h1>"
     except Exception as e:
         if os.path.exists(temp_path):
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
+# PAGES
 @app.route('/terms')
 def terms():
     return render_template('terms.html')
 
-from flask import Flask, render_template
-from flask import Flask, render_template
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-@app.route('/login')
-def login():
-    return render_template('login.html')
-
-@app.route('/dashboard')
-def dashboard():
-    return render_template('dashboard.html') 
 @app.route('/privacy')
 def privacy():
-    return render_template('privacy.html')  
+    return render_template('privacy.html')
 
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html', company=COMPANY)
 
+# UPSELL
 @app.route('/upsell', methods=['POST'])
 def upsell():
     email = request.json['email']
@@ -192,14 +179,12 @@ def upsell():
     if not mailchimp_key or not list_id:
         return jsonify({'error': 'Mailchimp not configured'})
     url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
-    headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"apikey {mailchimp_key}"}
     payload = {"email_address": email, "status": "subscribed", "tags": ["affiliate"]}
     response = requests.post(url, headers=headers, json=payload)
-    if response.status_code == 200:
-        return jsonify({'status': 'VIP Upsell Email Sent!'})
-    return jsonify({'error': 'Email failed'})
+    return jsonify({'status': 'Sent'}) if response.status_code == 200 else jsonify({'error': 'Failed'})
 
-# === PAYSTACK WEBHOOK (AUTO-ACTIVATE) ===
+# PAYSTACK WEBHOOK
 @app.route('/paystack/webhook', methods=['POST'])
 def paystack_webhook():
     payload = request.data
@@ -219,7 +204,7 @@ def paystack_webhook():
         conn.commit()
         queue.enqueue('worker.send_welcome_email', customer_code)
         conn.close()
-        return jsonify({'status': 'Subscription activated'})
+        return jsonify({'status': 'Activated'})
 
     elif event['event'] == 'charge.success':
         reference = event['data']['reference']
@@ -228,10 +213,11 @@ def paystack_webhook():
         cur.execute("INSERT INTO saas_payments (user_id, reference, amount, status) VALUES ((SELECT id FROM saas_users WHERE paystack_customer_code = %s), %s, %s, 'success')", (customer_code, reference, amount))
         conn.commit()
         conn.close()
-        return jsonify({'status': 'Payment logged'})
+        return jsonify({'status': 'Logged'})
 
     conn.close()
     return jsonify({'status': 'OK'})
 
+# RUN
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
