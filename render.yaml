@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: slickofficials
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /
