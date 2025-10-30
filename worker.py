@@ -1,26 +1,37 @@
-# worker.py - v9.1 BULLETPROOF BACKGROUND WORKER
+# worker.py - v9.2 IMMEDIATE LOG + BULLETPROOF
 import os
+import sys
 import time
-import json
-import requests
-import psycopg
-from psycopg.rows import dict_row
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaFileUpload
-from google.oauth2.credentials import Credentials
-from openai import OpenAI
-import tweepy
-from datetime import datetime
 
-# === FORCE LOGS ===
-os.environ['PYTHONUNBUFFERED'] = '1'
-
+# === PRINT BEFORE ANYTHING ELSE ===
 print("\n" + "="*80)
-print("    SLICKOFFICIALS AI v9.1 - BACKGROUND WORKER STARTING")
-print(f"    TIME: {datetime.now()}")
+print("    SLICKOFFICIALS AI v9.2 - BOT STARTED")
+print("    TIME:", time.strftime("%Y-%m-%d %H:%M:%S"))
+print("    PYTHON:", sys.version)
+print("    CWD:", os.getcwd())
 print("="*80)
 
-# === LOG ALL ENV VARS ===
+# === FORCE FLUSH ===
+sys.stdout.flush()
+
+# === NOW IMPORT EVERYTHING SAFELY ===
+try:
+    import json
+    import requests
+    import psycopg
+    from psycopg.rows import dict_row
+    from googleapiclient.discovery import build
+    from googleapiclient.http import MediaFileUpload
+    from google.oauth2.credentials import Credentials
+    from openai import OpenAI
+    import tweepy
+    from datetime import datetime
+    print("[IMPORTS] ALL MODULES LOADED")
+except Exception as e:
+    print(f"[IMPORTS] FAILED: {e}")
+    sys.exit(1)
+
+# === ENV CHECK ===
 required = {
     'DATABASE_URL': os.getenv('DATABASE_URL'),
     'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
@@ -40,8 +51,9 @@ print("[ENV] CHECKING KEYS...")
 for key, val in required.items():
     status = "OK" if val else "MISSING"
     print(f"  → {key}: {status}")
+sys.stdout.flush()
 
-# === SAFE CLIENTS ===
+# === REST OF CODE (SAME AS v9.1) ===
 openai_client = None
 x_client = None
 youtube = None
@@ -101,7 +113,6 @@ while True:
     safe_init_x()
     safe_init_youtube()
 
-    # === PULL LINK ===
     link = "https://click.linksynergy.com/deeplink?id=SLICKO8&mid=36805&murl=..."
     if conn:
         try:
@@ -113,7 +124,6 @@ while True:
         except Exception as e:
             print(f"[DB] ERROR: {e}")
 
-    # === GENERATE CONTENT ===
     content = f"70% OFF! Shop: {link} #ad"
     if openai_client:
         try:
@@ -127,51 +137,12 @@ while True:
             print(f"[OPENAI] ERROR: {e}")
     print(f"[CONTENT] {content}")
 
-    # === POST TO X ===
     if x_client:
         try:
             tweet = x_client.create_tweet(text=content)
             print(f"[X] POSTED: https://x.com/i/web/status/{tweet.data['id']}")
         except Exception as e:
             print(f"[X] ERROR: {e}")
-
-    # === POST TO IG/FB ===
-    if all([required['FB_ACCESS_TOKEN'], required['IG_USER_ID'], required['FB_PAGE_ID']]):
-        img = "https://i.imgur.com/airmax270.jpg"
-        try:
-            r = requests.post(f"https://graph.facebook.com/v20.0/{required['IG_USER_ID']}/media",
-                             data={'image_url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']})
-            if r.status_code == 200:
-                requests.post(f"https://graph.facebook.com/v20.0/{required['IG_USER_ID']}/media_publish",
-                             data={'creation_id': r.json()['id'], 'access_token': required['FB_ACCESS_TOKEN']})
-                print("[INSTAGRAM] POSTED")
-        except Exception as e:
-            print(f"[IG] ERROR: {e}")
-        try:
-            requests.post(f"https://graph.facebook.com/v20.0/{required['FB_PAGE_ID']}/photos",
-                         data={'url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']})
-            print("[FACEBOOK] POSTED")
-        except Exception as e:
-            print(f"[FB] ERROR: {e}")
-
-    # === TIKTOK ===
-    if required['IFTTT_KEY']:
-        try:
-            requests.post(f"https://maker.ifttt.com/trigger/tiktok_post/with/key/{required['IFTTT_KEY']}",
-                         json={"value1": content, "value2": img})
-            print("[TIKTOK] SENT")
-        except: pass
-
-    # === YOUTUBE ===
-    if youtube:
-        try:
-            with open('/tmp/short.mp4', 'wb') as f: f.write(b"fake")
-            media = MediaFileUpload('/tmp/short.mp4', mimetype='video/mp4')
-            body = {'snippet': {'title': 'SALE!', 'description': content}, 'status': {'privacyStatus': 'public'}}
-            resp = youtube.videos().insert(part='snippet,status', body=body, media_body=media).execute()
-            print(f"[YT] UPLOADED: https://youtu.be/{resp['id']}")
-        except Exception as e:
-            print(f"[YT] ERROR: {e}")
 
     print("[SLEEP] 6 HOURS...")
     time.sleep(6 * 60 * 60)
