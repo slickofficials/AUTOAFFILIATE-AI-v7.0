@@ -12,9 +12,10 @@ auth_bp = Blueprint('saas_auth', __name__)
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        email = request.form['email']
-        subdomain = request.form['subdomain'].lower()
+        email = request.form['email'].strip()
+        subdomain = request.form['subdomain'].strip().lower().replace(' ', '-')
         password = generate_password_hash(request.form['password'])
+
         if SaaSUser.query.filter_by(email=email).first():
             flash('Email already registered')
             return redirect(url_for('saas_auth.register'))
@@ -24,23 +25,20 @@ def register():
 
         # Create Paystack Customer
         url = "https://api.paystack.co/customer"
-        headers = {"Authorization": f"Bearer {os.getenv('PAYSTACK_SECRET_KEY')}"} 
+        headers = {"Authorization": f"Bearer {current_app.config['PAYSTACK_SECRET_KEY']}"}
         payload = {"email": email, "first_name": subdomain}
         r = requests.post(url, json=payload, headers=headers)
-        customer_code = r.json()['data']['customer_code'] if r.status_code == 201 else None
+        customer_code = None
+        if r.status_code == 201:
+            customer_code = r.json()['data']['customer_code']
 
-        user = SaaSUser(
-            email=email,
-            password=password,
-            subdomain=subdomain,
-            paystack_customer_code=customer_code,
-            status='trial'
-        )
+        user = SaaSUser(email=email, password=password, subdomain=subdomain, paystack_customer_code=customer_code, status='trial')
         db.session.add(user)
         db.session.commit()
         login_user(user)
         flash('7-Day Free Trial Activated! Pay ₦150k on Day 8.')
         return redirect(url_for('saas_main.dashboard'))
+
     return render_template('saas/register.html')
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
