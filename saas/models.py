@@ -11,7 +11,9 @@ class SaaSUser(UserMixin, db.Model):
     subdomain = db.Column(db.String(50), unique=True)
     paystack_customer_code = db.Column(db.String(100))
     paystack_subscription_code = db.Column(db.String(100))
-    status = db.Column(db.String(20), default='active')
+    amount = db.Column(db.Float, default=150000)
+    status = db.Column(db.String(20), default='trial')
+    next_billing_date = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def get_id(self):
