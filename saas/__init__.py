@@ -18,13 +18,12 @@ def create_saas_app():
     migrate.init_app(app, db)
     login.init_app(app)
 
-    # Register SaaS blueprints
     from .auth import auth_bp as saas_auth_bp
     from .billing import billing_bp
     from .main import main_bp as saas_main_bp
 
-    app.register_blueprint(saas_auth_bp, url_prefix='/saas')
-    app.register_blueprint(billing_bp, url_prefix='/saas')
-    app.register_blueprint(saas_main_bp, url_prefix='/saas')
+    app.register_blueprint(saas_auth_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(saas_main_bp)
 
     return app
