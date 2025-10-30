@@ -1,218 +1,206 @@
-# worker.py - v8.1 BULLETPROOF + FULL LOGGING + AUTO-RESTART
+# worker.py - v7.5 $10M AUTOPILOT ENGINE (ERROR RETRY + 500 SHORTS/DAY)
 import os
-import time
-import json
 import requests
+import openai
+from datetime import datetime, timedelta
 import psycopg
 from psycopg.rows import dict_row
+import tweepy
+import time
+import json
+import tempfile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
-from openai import OpenAI
-import tweepy
-from datetime import datetime
 
-print("\n" + "="*80)
-print("    SLICKOFFICIALS AI v8.1 - BOT STARTING (CRASH-PROOF)")
-print("="*80)
+# CONFIG
+DB_URL = os.getenv('DATABASE_URL')
+OPENAI_KEY = os.getenv('OPENAI_API_KEY')
+openai.api_key = OPENAI_KEY
 
-# === FORCE LOG EVERYTHING ===
-os.environ['PYTHONUNBUFFERED'] = '1'
+TWITTER_BEARER = os.getenv('TWITTER_BEARER_TOKEN')
+client = tweepy.Client(bearer_token=TWITTER_BEARER)
 
-# === ENV VARS (LOG MISSING ONES) ===
-required = {
-    'DATABASE_URL': os.getenv('DATABASE_URL'),
-    'OPENAI_API_KEY': os.getenv('OPENAI_API_KEY'),
-    'TWITTER_API_KEY': os.getenv('TWITTER_API_KEY'),
-    'TWITTER_API_SECRET': os.getenv('TWITTER_API_SECRET'),
-    'TWITTER_ACCESS_TOKEN': os.getenv('TWITTER_ACCESS_TOKEN'),
-    'TWITTER_ACCESS_SECRET': os.getenv('TWITTER_ACCESS_SECRET'),
-    'TWITTER_BEARER_TOKEN': os.getenv('TWITTER_BEARER_TOKEN'),
-    'FB_ACCESS_TOKEN': os.getenv('FB_ACCESS_TOKEN'),
-    'IG_USER_ID': os.getenv('IG_USER_ID'),
-    'FB_PAGE_ID': os.getenv('FB_PAGE_ID'),
-    'IFTTT_KEY': os.getenv('IFTTT_KEY'),
-    'YOUTUBE_TOKEN_JSON': os.getenv('YOUTUBE_TOKEN_JSON'),
-}
+IFTTT_KEY = os.getenv('IFTTT_KEY')  # For TikTok
 
-for key, val in required.items():
-    status = "OK" if val else "MISSING"
-    print(f"[ENV] {key}: {status}")
+HEYGEN_KEY = os.getenv('HEYGEN_API_KEY')
 
-# === CLIENTS ===
-openai_client = None
-x_client = None
-youtube = None
-conn = None
+# DATABASE
+def get_db():
+    conn = psycopg.connect(DB_URL, row_factory=dict_row)
+    return conn, conn.cursor()
 
-# === CONNECT DB (RETRY) ===
-def connect_db():
-    global conn
-    for i in range(3):
+# Error Retry Wrapper (3 tries)
+def with_retry(func, *args, **kwargs):
+    retries = 3
+    for attempt in range(retries):
         try:
-            conn = psycopg.connect(required['DATABASE_URL'], row_factory=dict_row, timeout=10)
-            print("[DB] CONNECTED")
-            return True
+            return func(*args, **kwargs)
         except Exception as e:
-            print(f"[DB] ATTEMPT {i+1} FAILED: {e}")
-            time.sleep(5)
-    print("[DB] GAVE UP")
-    return False
+            print(f"[RETRY] Failed {func.__name__} (Attempt {attempt+1}/{retries}): {e}")
+            time.sleep(5 * (attempt + 1))  # Exponential backoff
+    print(f"[RETRY] Gave up on {func.__name__}")
+    return None
 
-# === INIT X CLIENT ===
-def init_x():
-    global x_client
-    keys = [required['TWITTER_API_KEY'], required['TWITTER_API_SECRET'],
-            required['TWITTER_ACCESS_TOKEN'], required['TWITTER_ACCESS_SECRET'],
-            required['TWITTER_BEARER_TOKEN']]
-    if not all(keys):
-        print("[X] MISSING KEYS → SKIPPING")
-        return False
+# Awin Offers
+def get_awin_offers():
+    url = f"https://productdata.awin.com/datafeed/download/apiv5/{os.getenv('AWIN_PUBLISHER_ID')}/csv/"
+    headers = {"Authorization": f"Bearer {os.getenv('AWIN_API_TOKEN')}", "User-Agent": "AutoAffiliateAI-v7.5"}
     try:
-        x_client = tweepy.Client(
-            consumer_key=required['TWITTER_API_KEY'],
-            consumer_secret=required['TWITTER_API_SECRET'],
-            access_token=required['TWITTER_ACCESS_TOKEN'],
-            access_token_secret=required['TWITTER_ACCESS_SECRET'],
-            bearer_token=required['TWITTER_BEARER_TOKEN']
-        )
-        print("[X] CLIENT READY")
-        return True
+        r = requests.get(url, headers=headers, timeout=30)
+        if r.status_code == 200:
+            lines = r.text.splitlines()[1:500]  # 500 for scale
+            offers = []
+            for line in lines:
+                cols = line.split('|')
+                if len(cols) > 5:
+                    offers.append({
+                        'product': cols[1],
+                        'link': cols[3],
+                        'image': cols[5],
+                        'commission': '8%'
+                    })
+            return offers
     except Exception as e:
-        print(f"[X] CLIENT ERROR: {e}")
-        return False
+        print(f"[AWIN] Error: {e}")
+    return []
 
-# === INIT YOUTUBE ===
-def init_youtube():
-    global youtube
-    if not required['YOUTUBE_TOKEN_JSON']:
-        print("[YT] NO TOKEN → SKIPPING")
-        return False
+# Rakuten Offers
+def get_rakuten_offers():
+    url = "https://api.rakutenmarketing.com/offers/1.0"
+    headers = {"Authorization": f"Bearer {os.getenv('RAKUTEN_WEBSERVICES_TOKEN')}"}
+    params = {
+        "client_id": os.getenv('RAKUTEN_CLIENT_ID'),
+        "client_secret": os.getenv('RAKUTEN_SECURITY_TOKEN')
+    }
     try:
-        creds = Credentials.from_authorized_user_info(json.loads(required['YOUTUBE_TOKEN_JSON']))
-        youtube = build('youtube', 'v3', credentials=creds)
-        print("[YT] CLIENT READY")
-        return True
+        r = requests.get(url, headers=headers, params=params, timeout=30)
+        if r.status_code == 200:
+            data = r.json()['offers'][:500]  # 500 for scale
+            offers = []
+            for item in data:
+                offers.append({
+                    'product': item['name'],
+                    'link': item['affiliate_link'],
+                    'image': item['image_url'],
+                    'commission': item['commission_rate']
+                })
+            return offers
     except Exception as e:
-        print(f"[YT] CLIENT ERROR: {e}")
-        return False
+        print(f"[RAKUTEN] Error: {e}")
+    return []
 
-# === INIT OPENAI ===
-if required['OPENAI_API_KEY']:
+# Generate AI Post
+def generate_post(offer):
+    prompt = f"Write a 150-char viral affiliate post for {offer['product']} at {offer['commission']} commission. Use emojis, urgency, CTA. Link: {offer['link']}"
     try:
-        openai_client = OpenAI(api_key=required['OPENAI_API_KEY'])
-        print("[OPENAI] CLIENT READY")
-    except Exception as e:
-        print(f"[OPENAI] ERROR: {e}")
-else:
-    print("[OPENAI] NO KEY → USING FALLBACK")
-
-# === PULL LINK FROM DB ===
-def get_link():
-    if not conn:
-        print("[DB] NO CONNECTION → FALLBACK LINK")
-        return {'product': 'Nike Air Max', 'deeplink': 'https://click.linksynergy.com/deeplink?id=SLICKO8&mid=36805&murl=...', 'commission': 15}
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT product_name, deeplink, commission FROM affiliate_links WHERE active = TRUE ORDER BY RANDOM() LIMIT 1")
-            row = cur.fetchone()
-            if row:
-                print(f"[DB] PULLED: {row['product_name']}")
-                return {'product': row['product_name'], 'deeplink': row['deeplink'], 'commission': row['commission']}
-    except Exception as e:
-        print(f"[DB] QUERY ERROR: {e}")
-    return {'product': 'Fallback Product', 'deeplink': 'https://click.linksynergy.com/deeplink?id=SLICKO8&mid=36805&murl=...', 'commission': 10}
-
-# === GENERATE CONTENT ===
-def generate_content(data):
-    product, link = data['product'], data['deeplink']
-    if not openai_client:
-        return f"70% OFF {product}! Shop: {link} #ad"
-    try:
-        prompt = f"Write a viral post for {product}. Use emojis, urgency. Link: {link}. Max 280 chars. End with #ad"
-        resp = openai_client.chat.completions.create(
+        resp = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=100,
-            temperature=0.8
+            max_tokens=80
         )
-        content = resp.choices[0].message.content.strip()
-        return content[:280]
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[OPENAI] FAILED: {e}")
-        return f"70% OFF {product}! Shop: {link} #ad"
+        print(f"[OPENAI] Error: {e}")
+        return f"🔥 70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
-# === POST FUNCTIONS (SAFE) ===
+# Generate Short Video with HeyGen (Error Retry)
+def generate_short_video(offer):
+    def _generate():
+        url = "https://api.heygen.com/v1/video/generate"
+        payload = {
+            "script": generate_post(offer)[:500],
+            "avatar_id": "Daisy",
+            "background_id": "gym_bg",
+            "voice_id": "en_us_1"
+        }
+        headers = {"Authorization": f"Bearer {HEYGEN_KEY}"}
+        r = requests.post(url, json=payload, headers=headers, timeout=30)
+        if r.status_code == 200:
+            video_url = r.json()['data']['video_url']
+            path = f"short_{int(time.time())}.mp4"
+            with open(path, 'wb') as f:
+                f.write(requests.get(video_url).content)
+            return path
+        raise Exception(r.text)
+
+    return with_retry(_generate, offer)
+
+# Post to X (Error Retry)
 def post_to_x(content):
-    if not x_client: return
-    try:
-        tweet = x_client.create_tweet(text=content)
-        print(f"[X] POSTED: https://x.com/i/web/status/{tweet.data['id']}")
-    except Exception as e:
-        print(f"[X] POST FAILED: {e}")
+    def _post():
+        client.create_tweet(text=content[:280])
+        print(f"[X] Posted: {content[:50]}...")
+    with_retry(_post, content)
 
-def post_to_meta(content):
-    if not all([required['FB_ACCESS_TOKEN'], required['IG_USER_ID'], required['FB_PAGE_ID']]):
-        print("[META] KEYS MISSING → SKIPPING")
+# Post via IFTTT (TikTok — Error Retry)
+def post_via_ifttt(platform, content, image_url):
+    def _post():
+        url = f"https://maker.ifttt.com/trigger/{platform}_post/with/key/{IFTTT_KEY}"
+        data = {"value1": content, "value2": image_url}
+        r = requests.post(url, json=data, timeout=10)
+        if r.status_code != 200:
+            raise Exception(r.text)
+        print(f"[{platform.upper()} ] Sent via IFTTT")
+    with_retry(_post, platform, content, image_url)
+
+# YouTube Shorts Upload (Error Retry)
+def upload_youtube_short(title, description, video_path):
+    def _upload():
+        if not os.path.exists('youtube_token.json'):
+            return None
+        with open('youtube_token.json') as f:
+            creds = Credentials.from_authorized_user_info(json.load(f))
+        youtube = build('youtube', 'v3', credentials=creds)
+        body = {
+            'snippet': {'title': title, 'description': description, 'tags': ['affiliate', 'sale'], 'categoryId': '22'},
+            'status': {'privacyStatus': 'public'}
+        }
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
+        response = request.execute()
+        print(f"[YT] Uploaded: {response['id']}")
+        return response['id']
+    return with_retry(_upload, title, description, video_path)
+
+# Telegram Alert
+def send_telegram(message):
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if not bot_token or not chat_id:
         return
-    img = "https://i.imgur.com/airmax270.jpg"
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     try:
-        r = requests.post(f"https://graph.facebook.com/v20.0/{required['IG_USER_ID']}/media",
-                         data={'image_url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']}, timeout=30)
-        if r.status_code == 200 and 'id' in r.json():
-            requests.post(f"https://graph.facebook.com/v20.0/{required['IG_USER_ID']}/media_publish",
-                         data={'creation_id': r.json()['id'], 'access_token': required['FB_ACCESS_TOKEN']})
-            print("[INSTAGRAM] POSTED")
-    except Exception as e:
-        print(f"[INSTAGRAM] ERROR: {e}")
-    try:
-        requests.post(f"https://graph.facebook.com/v20.0/{required['FB_PAGE_ID']}/photos",
-                     data={'url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']})
-        print("[FACEBOOK] POSTED")
-    except Exception as e:
-        print(f"[FACEBOOK] ERROR: {e}")
-
-def post_to_tiktok(content):
-    if not required['IFTTT_KEY']: return
-    try:
-        requests.post(f"https://maker.ifttt.com/trigger/tiktok_post/with/key/{required['IFTTT_KEY']}",
-                     json={"value1": content, "value2": "https://i.imgur.com/airmax270.jpg"}, timeout=10)
-        print("[TIKTOK] SENT")
+        requests.post(url, data={'chat_id': chat_id, 'text': message})
     except: pass
 
-def post_to_youtube(content, product):
-    if not youtube: return
-    try:
-        video_path = '/tmp/short.mp4'
-        with open(video_path, 'wb') as f: f.write(b"fake")
-        media = MediaFileUpload(video_path, mimetype='video/mp4')
-        body = {'snippet': {'title': f'{product} SALE!', 'description': content}, 'status': {'privacyStatus': 'public'}}
-        resp = youtube.videos().insert(part='snippet,status', body=body, media_body=media).execute()
-        print(f"[YT] UPLOADED: https://youtu.be/{resp['id']}")
-    except Exception as e:
-        print(f"[YT] FAILED: {e}")
+# MAIN CAMPAIGN (500 SHORTS/DAY)
+def run_daily_campaign():
+    print(f"[BEAST] v7.5 Campaign started at {datetime.now()} — 500 Shorts/Day")
 
-# === MAIN LOOP (RESTART ON CRASH) ===
-print("\n[BEAST] STARTING INFINITE CAMPAIGN LOOP...")
-run_count = 0
+    offers = get_awin_offers() + get_rakuten_offers()
+    if not offers:
+        print("[BEAST] No offers found")
+        return
 
-while True:
-    run_count += 1
-    print(f"\n[RUN #{run_count}] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    posts_today = 0
+    for offer in offers[:500]:  # 500 Shorts/Day
+        content = generate_post(offer)
+        post_to_x(content)
+        post_via_ifttt('instagram', content, offer['image'])
+        post_via_ifttt('tiktok', content, offer['image'])
 
-    # Reconnect DB every run
-    connect_db()
-    init_x()
-    init_youtube()
+        video_path = generate_short_video(offer)
+        short_title = f"{offer['product']} Deal! #{posts_today + 1}"
+        short_desc = content
+        video_id = upload_youtube_short(short_title, short_desc, video_path)
+        if video_id:
+            conn, cur = get_db()
+            cur.execute("INSERT INTO posts (platform, content, link, status) VALUES (%s, %s, %s, 'sent')", ('youtube', short_desc, video_id))
+            conn.commit()
+            conn.close()
+        posts_today += 1
+        time.sleep(5)  # 5s delay for 500/hour
 
-    link_data = get_link()
-    content = generate_content(link_data)
-    print(f"[CONTENT] {content[:100]}...")
-
-    post_to_x(content)
-    post_to_meta(content)
-    post_to_tiktok(content)
-    post_to_youtube(content, link_data['product'])
-
-    print(f"[SLEEP] 6 HOURS UNTIL NEXT RUN...")
-    time.sleep(6 * 60 * 60)  # 6 hours
+    print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
+    send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
