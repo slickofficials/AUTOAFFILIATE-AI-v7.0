@@ -1,4 +1,4 @@
-# app.py - v7.5 $10M EMPIRE (FULL HEYGEN + YOUTUBE + REFERRAL DASH + AUTO-EMAIL UPSELL)
+# app.py - v7.5 $10M EMPIRE (HEADLESS YOUTUBE + TELEGRAM + RENDER SAFE)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import redis
@@ -30,10 +30,20 @@ def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# ROOT → LOGIN
+# FRONT PAGE (INDEX.HTML WITH PRIVACY/TERMS LINKS)
 @app.route('/')
 def index():
-    return redirect(url_for('login'))
+    return render_template('index.html', company=COMPANY)
+
+# PRIVACY POLICY
+@app.route('/privacy')
+def privacy():
+    return render_template('privacy.html', company=COMPANY)
+
+# TERMS OF SERVICE
+@app.route('/terms')
+def terms():
+    return render_template('terms.html', company=COMPANY)
 
 # LOGIN
 @app.route('/login', methods=['GET', 'POST'])
@@ -54,9 +64,9 @@ def login():
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
-    return redirect(url_for('login'))
+    return redirect(url_for('index'))
 
-# DASHBOARD (WITH REFERRAL DASHBOARD)
+# DASHBOARD
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
@@ -156,12 +166,10 @@ def youtube_callback():
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
-# MINI APP
 @app.route('/miniapp')
 def miniapp():
     return render_template('miniapp.html', company=COMPANY)
 
-# AUTO-EMAIL UPSELL (MAILCHIMP)
 @app.route('/upsell', methods=['POST'])
 def upsell():
     email = request.json['email']
@@ -176,76 +184,6 @@ def upsell():
     if response.status_code == 200:
         return jsonify({'status': 'VIP Upsell Email Sent!'})
     return jsonify({'error': 'Email failed: ' + response.text})
-
-# FULL HEYGEN + YOUTUBE INTEGRATION (Tweak - Called from Dashboard)
-@app.route('/generate_short', methods=['POST'])
-def generate_short():
-    if 'user_id' not in session:
-        return jsonify({'error': 'Login required'}), 401
-
-    offer = request.json
-    content = generate_post(offer)
-    video_path = generate_short_video(offer)
-    short_title = f"{offer['product']} Deal!"
-    short_desc = content
-    video_id = upload_youtube_short(short_title, short_desc, video_path)
-    if video_id:
-        return jsonify({'status': 'Short Generated & Uploaded', 'video_id': video_id})
-    return jsonify({'error': 'Generation failed'}), 500
-
-# === FUNCTIONS FOR HEYGEN + YOUTUBE ===
-def generate_post(offer):
-    prompt = f"Write a 150-char viral affiliate post for {offer['product']} at {offer['commission']} commission. Use emojis, urgency, CTA. Link: {offer['link']}"
-    try:
-        resp = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=80
-        )
-        return resp.choices[0].message.content.strip()
-    except Exception as e:
-        print(f"[OPENAI] Error: {e}")
-        return f"🔥 70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
-
-def generate_short_video(offer):
-    if not os.getenv('HEYGEN_API_KEY'):
-        return 'placeholder_short.mp4'
-    url = "https://api.heygen.com/v1/video/generate"
-    payload = {
-        "script": generate_post(offer)[:500],
-        "avatar_id": "Daisy",
-        "background_id": "gym_bg",
-        "voice_id": "en_us_1"
-    }
-    headers = {"Authorization": f"Bearer {os.getenv('HEYGEN_API_KEY')}"}
-    try:
-        r = requests.post(url, json=payload, headers=headers, timeout=30)
-        if r.status_code == 200:
-            video_url = r.json()['data']['video_url']
-            path = f"short_{int(time.time())}.mp4"
-            with open(path, 'wb') as f:
-                f.write(requests.get(video_url).content)
-            return path
-    except Exception as e:
-        print(f"[HEYGEN] Error: {e}")
-    return 'placeholder_short.mp4'
-
-def upload_youtube_short(title, description, video_path):
-    if not os.path.exists('youtube_token.json'):
-        print("[YT] Token missing")
-        return None
-    with open('youtube_token.json') as f:
-        creds = Credentials.from_authorized_user_info(json.load(f))
-    youtube = build('youtube', 'v3', credentials=creds)
-    body = {
-        'snippet': {'title': title, 'description': description, 'tags': ['affiliate', 'sale'], 'categoryId': '22'},
-        'status': {'privacyStatus': 'public'}
-    }
-    media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
-    request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
-    response = request.execute()
-    print(f"[YT] Uploaded: {response['id']}")
-    return response['id']
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
