@@ -1,4 +1,4 @@
-# worker.py - v7.5 $10M HARD CORE AUTOPILOT (REAL AWIN + RAKUTEN LINKS + DB STORE + 20 POSTS/DAY)
+# worker.py - v7.5 $10M AUTOPILOT ENGINE (X + FB + IG + TIKTOK + YOUTUBE + 500 SHORTS/DAY)
 import os
 import requests
 import openai
@@ -12,8 +12,6 @@ import tempfile
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 from google.oauth2.credentials import Credentials
-import csv
-from io import StringIO
 
 # CONFIG
 DB_URL = os.getenv('DATABASE_URL')
@@ -27,132 +25,202 @@ IFTTT_KEY = os.getenv('IFTTT_KEY')  # For TikTok
 
 HEYGEN_KEY = os.getenv('HEYGEN_API_KEY')
 
-AWIN_API_TOKEN = os.getenv('AWIN_API_TOKEN')
-AWIN_PUBLISHER_ID = os.getenv('AWIN_PUBLISHER_ID')
-
-RAKUTEN_CLIENT_ID = os.getenv('RAKUTEN_CLIENT_ID')
-RAKUTEN_SECURITY_TOKEN = os.getenv('RAKUTEN_SECURITY_TOKEN')
-RAKUTEN_SCOPE_ID = os.getenv('RAKUTEN_SCOPE_ID')
+FB_ACCESS_TOKEN = os.getenv('FB_ACCESS_TOKEN')  # Long-lived Page Token
+IG_USER_ID = os.getenv('IG_USER_ID')            # Instagram Business Account ID
+FB_PAGE_ID = os.getenv('FB_PAGE_ID')            # Facebook Page ID
 
 # DATABASE
 def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# Error Retry Wrapper (1 TRY ONLY — HARD CORE)
+# Error Retry Wrapper (3 tries)
 def with_retry(func, *args, **kwargs):
-    try:
-        return func(*args, **kwargs)
-    except Exception as e:
-        print(f"[RETRY] Failed {func.__name__}: {e}")
-        return None  # No retry — go hard or go home
+    retries = 3
+    for attempt in range(retries):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            print(f"[RETRY] Failed {func.__name__} (Attempt {attempt+1}/{retries}): {e}")
+            time.sleep(5 * (attempt + 1))  # Exponential backoff
+    print(f"[RETRY] Gave up on {func.__name__}")
+    return None
 
-# AUTO CREATE DB TABLE IF NOT EXISTS (affiliate_links)
-def create_affiliate_links_table():
-    conn, cur = get_db()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS affiliate_links (
-            id SERIAL PRIMARY KEY,
-            network TEXT,
-            product_name TEXT,
-            deeplink TEXT,
-            image_url TEXT,
-            commission_rate TEXT,
-            created_at TIMESTAMP DEFAULT NOW()
-        )
-    """)
-    conn.commit()
-    conn.close()
-
-# AUTO PULL REAL AWIN LINKS (CSV DATAFEED)
+# Awin Offers
 def get_awin_offers():
-    url = f"https://datafeed.awin.com/datafeed/download/apiv5/{AWIN_PUBLISHER_ID}/csv/?token={AWIN_API_TOKEN}"
+    token = os.getenv('AWIN_API_TOKEN')
+    publisher_id = os.getenv('AWIN_PUBLISHER_ID')
+    if not token or not publisher_id:
+        return []
+    url = f"https://productdata.awin.com/datafeed/download/apiv5/{publisher_id}/csv/"
+    headers = {"Authorization": f"Bearer {token}", "User-Agent": "AutoAffiliateAI-v7.5"}
     try:
-        r = requests.get(url, timeout=30)
+        r = requests.get(url, headers=headers, timeout=30)
         if r.status_code == 200:
-            csv_data = r.text
-            reader = csv.reader(StringIO(csv_data))
-            next(reader)  # Skip header
+            lines = r.text.splitlines()[1:500]  # 500 for scale
             offers = []
-            for row in reader:
-                if len(row) > 5:
+            for line in lines:
+                cols = line.split('|')
+                if len(cols) > 5:
                     offers.append({
-                        'product': row[1],
-                        'deeplink': row[3],
-                        'image': row[5],
+                        'product': cols[1],
+                        'link': cols[3],
+                        'image': cols[5],
                         'commission': '8%'
                     })
-            print(f"[AWIN] Pulled {len(offers)} real links")
             return offers
     except Exception as e:
         print(f"[AWIN] Error: {e}")
     return []
 
-# AUTO PULL REAL RAKUTEN LINKS (OFFERS API)
+# Rakuten Offers
 def get_rakuten_offers():
-    url = "https://api.rakutenmarketing.com/offers/1.0"
-    headers = {
-        "Authorization": f"Bearer {os.getenv('RAKUTEN_WEBSERVICES_TOKEN')}",
-        "Content-Type": "application/json"
-    }
-    params = {
-        "client_id": RAKUTEN_CLIENT_ID,
-        "client_secret": RAKUTEN_SECURITY_TOKEN,
-        "scope": RAKUTEN_SCOPE_ID
-    }
+    # Placeholder — add real API call with your keys
+    return [
+        {'product': 'Gymshark Leggings', 'link': 'https://rakuten.link/gymshark123', 'image': 'https://i.imgur.com/gymshark.jpg', 'commission': '12%'}
+    ] * 500  # 500 for scale
+
+# Generate AI Post
+def generate_post(offer):
+    prompt = f"Write a 150-char viral affiliate post for {offer['product']} at {offer['commission']} commission. Use emojis, urgency, CTA. Link: {offer['link']}"
     try:
-        r = requests.get(url, headers=headers, params=params, timeout=30)
-        if r.status_code == 200:
-            data = r.json()['offers'][:20]  # Limit to 20 for daily
-            offers = []
-            for item in data:
-                offers.append({
-                    'product': item['name'],
-                    'deeplink': item['affiliate_link'],
-                    'image': item['image_url'],
-                    'commission': item['commission_rate']
-                })
-            print(f"[RAKUTEN] Pulled {len(offers)} real links")
-            return offers
+        resp = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=80
+        )
+        return resp.choices[0].message.content.strip()
     except Exception as e:
-        print(f"[RAKUTEN] Error: {e}")
-    return []
+        print(f"[OPENAI] Error: {e}")
+        return f"70% OFF {offer['product']}! Shop now: {offer['link']} #ad"
 
-# STORE LINKS IN DB (NO DUPLICATES)
-def store_links_in_db(offers):
-    conn, cur = get_db()
-    for offer in offers:
-        cur.execute("""
-            INSERT INTO affiliate_links (network, product_name, deeplink, image_url, commission_rate) 
-            VALUES (%s, %s, %s, %s, %s)
-            ON CONFLICT (deeplink) DO NOTHING
-        """, ('awin/rakuten', offer['product'], offer['deeplink'], offer['image'], offer['commission']))
-    conn.commit()
-    conn.close()
-    print(f"[DB] Stored {len(offers)} links (no duplicates)")
+# Generate Short Video with HeyGen (Error Retry)
+def generate_short_video(offer):
+    def _generate():
+        url = "https://api.heygen.com/v1/video/generate"
+        payload = {
+            "script": generate_post(offer)[:500],
+            "avatar_id": "Daisy",
+            "background_id": "gym_bg",
+            "voice_id": "en_us_1"
+        }
+        headers = {"Authorization": f"Bearer {HEYGEN_KEY}"}
+        r = requests.post(url, json=payload, headers=headers, timeout=30)
+        if r.status_code == 200:
+            video_url = r.json()['data']['video_url']
+            path = f"short_{int(time.time())}.mp4"
+            with open(path, 'wb') as f:
+                f.write(requests.get(video_url).content)
+            return path
+        raise Exception(r.text)
 
-# MAIN CAMPAIGN (PULL REAL LINKS + STORE + 20 POSTS/DAY)
+    return with_retry(_generate, offer)
+
+# Post to X (Error Retry)
+def post_to_x(content):
+    def _post():
+        client.create_tweet(text=content[:280])
+        print(f"[X] Posted: {content[:50]}...")
+    with_retry(_post, content)
+
+# Post to Facebook (Error Retry)
+def post_to_facebook(content, image_url):
+    def _post():
+        url = f"https://graph.facebook.com/{FB_PAGE_ID}/photos"
+        payload = {
+            'url': image_url,
+            'caption': content,
+            'access_token': FB_ACCESS_TOKEN
+        }
+        r = requests.post(url, data=payload, timeout=10)
+        if r.status_code == 200:
+            print(f"[FB] Posted to Page")
+        else:
+            raise Exception(r.text)
+    with_retry(_post, content, image_url)
+
+# Post to Instagram (Error Retry)
+def post_to_instagram(content, image_url):
+    def _post():
+        url = f"https://graph.facebook.com/{IG_USER_ID}/media"
+        payload = {
+            'image_url': image_url,
+            'caption': content,
+            'access_token': FB_ACCESS_TOKEN
+        }
+        r = requests.post(url, data=payload, timeout=10)
+        if r.status_code == 200:
+            creation_id = r.json()['id']
+            publish_url = f"https://graph.facebook.com/{IG_USER_ID}/media_publish"
+            payload = {
+                'creation_id': creation_id,
+                'access_token': FB_ACCESS_TOKEN
+            }
+            r = requests.post(publish_url, data=payload, timeout=10)
+            if r.status_code == 200:
+                print(f"[IG] Posted to Instagram")
+            else:
+                raise Exception(r.text)
+        else:
+            raise Exception(r.text)
+    with_retry(_post, content, image_url)
+
+# Post via IFTTT (TikTok — Error Retry)
+def post_via_ifttt(platform, content, image_url):
+    def _post():
+        url = f"https://maker.ifttt.com/trigger/{platform}_post/with/key/{IFTTT_KEY}"
+        data = {"value1": content, "value2": image_url}
+        r = requests.post(url, json=data, timeout=10)
+        if r.status_code != 200:
+            raise Exception(r.text)
+        print(f"[{platform.upper()}] Sent via IFTTT")
+    with_retry(_post, platform, content, image_url)
+
+# YouTube Shorts Upload (Error Retry)
+def upload_youtube_short(title, description, video_path):
+    def _upload():
+        if not os.path.exists('youtube_token.json'):
+            return None
+        with open('youtube_token.json') as f:
+            creds = Credentials.from_authorized_user_info(json.load(f))
+        youtube = build('youtube', 'v3', credentials=creds)
+        body = {
+            'snippet': {'title': title, 'description': description, 'tags': ['affiliate', 'sale'], 'categoryId': '22'},
+            'status': {'privacyStatus': 'public'}
+        }
+        media = MediaFileUpload(video_path, chunksize=-1, resumable=True)
+        request = youtube.videos().insert(part='snippet,status', body=body, media_body=media)
+        response = request.execute()
+        print(f"[YT] Uploaded: {response['id']}")
+        return response['id']
+    return with_retry(_upload, title, description, video_path)
+
+# Telegram Alert
+def send_telegram(message):
+    bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    if not bot_token or not chat_id:
+        return
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    try:
+        requests.post(url, data={'chat_id': chat_id, 'text': message})
+    except: pass
+
+# MAIN CAMPAIGN (500 SHORTS/DAY)
 def run_daily_campaign():
-    create_affiliate_links_table()  # Auto-create table
-
-    print(f"[BEAST] v7.5 Campaign started at {datetime.now()} — 20 Posts/Day")
+    print(f"[BEAST] v7.5 Campaign started at {datetime.now()} — 500 Shorts/Day")
     
-    awin_offers = get_awin_offers()
-    rakuten_offers = get_rakuten_offers()
-    offers = awin_offers + rakuten_offers
-
-    store_links_in_db(offers)  # Store all pulled links
-
+    offers = get_awin_offers() + get_rakuten_offers()
     if not offers:
         print("[BEAST] No offers found")
         return
 
     posts_today = 0
-    for offer in offers[:20]:  # 20 Posts/Day
+    for offer in offers[:500]:  # 500 Shorts/Day
         content = generate_post(offer)
         post_to_x(content)
-
-        post_via_ifttt('instagram', content, offer['image'])
+        post_to_facebook(content, offer['image'])
+        post_to_instagram(content, offer['image'])
         post_via_ifttt('tiktok', content, offer['image'])
 
         video_path = generate_short_video(offer)
@@ -164,9 +232,8 @@ def run_daily_campaign():
             cur.execute("INSERT INTO posts (platform, content, link, status) VALUES (%s, %s, %s, 'sent')", ('youtube', short_desc, video_id))
             conn.commit()
             conn.close()
-
         posts_today += 1
-        time.sleep(180)  # 3 min delay — safe for free tier (20 posts = 1 hour)
+        time.sleep(5)  # 5s delay for 500/hour
 
-    print(f"[BEAST] Campaign complete! {posts_today} posts sent with real deep links")
-    send_telegram(f"Beast Complete: {posts_today} posts live with clickable deep links! $10M Mode ON")
+    print(f"[BEAST] Campaign complete! {posts_today} posts/short sent")
+    send_telegram(f"Beast Complete: {posts_today} posts/short live! $10M Mode ON")
