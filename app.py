@@ -186,6 +186,10 @@ def payout():
         conn.close()
         return jsonify({'error': f'Payout failed: {r.text}'}), 500
 
+@app.route('/health')
+def health():
+    return 'OK', 200
+    
 # === BEAST CAMPAIGN ===
 @app.route('/beast_campaign')
 def beast_campaign():
