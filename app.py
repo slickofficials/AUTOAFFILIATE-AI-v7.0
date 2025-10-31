@@ -1,4 +1,4 @@
-# app.py - v7.6 $10M EMPIRE (SEO + GZIP + HEADLESS YOUTUBE + RENDER SAFE)
+# app.py - v7.7 $10M EMPIRE (SEO + GZIP + LIVE STATS + AUTO-PAYOUT + HEADLESS YOUTUBE + RENDER SAFE)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress  # GZIP = 3x FASTER
 import os
@@ -7,8 +7,6 @@ import rq
 import psycopg
 from psycopg.rows import dict_row
 import bcrypt
-import hmac
-import hashlib
 import openai
 import json
 import tempfile
@@ -19,8 +17,8 @@ from datetime import datetime
 # === INIT ===
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
-Compress(app)  # ENABLE GZIP COMPRESSION
-COMPANY = "Slickofficials HQ | Amson Multi Global LTD"
+Compress(app)
+COMPANY = "SlickOfficials HQ | Amson Multi Global LTD"
 
 # === CONFIG ===
 DB_URL = os.getenv('DATABASE_URL')
@@ -29,7 +27,7 @@ r = redis.from_url(REDIS_URL)
 queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# === CACHE HEADERS ===
+# === CACHE & SECURITY HEADERS ===
 @app.after_request
 def add_header(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -99,7 +97,7 @@ def dashboard():
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
         posts_sent = cur.fetchone()['post_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings")
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
         revenue = cur.fetchone()['total_revenue'] or 0
         cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
         referrals = cur.fetchone()['ref_count'] or 0
@@ -121,11 +119,78 @@ def dashboard():
                          company=COMPANY,
                          title="Dashboard | $10M Empire")
 
+# === LIVE STATS API ===
+@app.route('/api/stats')
+def api_stats():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    user_id = session['user_id']
+    try:
+        conn, cur = get_db()
+        cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
+        posts_sent = cur.fetchone()['post_count'] or 0
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
+        revenue = cur.fetchone()['total_revenue'] or 0
+        cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
+        referrals = cur.fetchone()['ref_count'] or 0
+        cur.execute("SELECT COALESCE(SUM(reward), 0) as ref_earnings FROM referrals WHERE referrer_id = %s", (user_id,))
+        ref_earnings = cur.fetchone()['ref_earnings'] or 0
+        conn.close()
+        return jsonify({
+            'posts_sent': posts_sent,
+            'revenue': float(revenue),
+            'referrals': referrals,
+            'ref_earnings': float(ref_earnings)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# === AUTO-PAYOUT ENDPOINT ===
+@app.route('/payout', methods=['POST'])
+def payout():
+    user_id = session.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'Login required'}), 401
+    
+    amount = request.json.get('amount', 0)
+    bank_account = request.json.get('bank_account')
+    if amount <= 0 or not bank_account:
+        return jsonify({'error': 'Invalid amount or bank'}), 400
+    
+    conn, cur = get_db()
+    cur.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+    user = cur.fetchone()
+    if not user or user['balance'] < amount:
+        conn.close()
+        return jsonify({'error': 'Insufficient balance'}), 400
+    
+    paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
+    headers = {'Authorization': f'Bearer {paystack_secret}'}
+    payout_data = {
+        'source': 'balance',
+        'amount': int(amount * 100),
+        'recipient': bank_account,
+        'reason': 'Affiliate earnings'
+    }
+    r = requests.post('https://api.paystack.co/transfer', headers=headers, json=payout_data, timeout=10)
+    
+    if r.status_code == 200:
+        cur.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (amount, user_id))
+        cur.execute("INSERT INTO earnings (user_id, amount, source, created_at) VALUES (%s, %s, %s, %s)", 
+                    (user_id, -amount, 'payout', datetime.utcnow()))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': f'₦{amount} paid out!'})
+    else:
+        conn.close()
+        return jsonify({'error': f'Payout failed: {r.text}'}), 500
+
 # === BEAST CAMPAIGN ===
 @app.route('/beast_campaign')
 def beast_campaign():
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v7.6 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v7.7 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
 
 # === YOUTUBE AUTH (HEADLESS + RENDER SAFE) ===
 @app.route('/youtube_auth')
