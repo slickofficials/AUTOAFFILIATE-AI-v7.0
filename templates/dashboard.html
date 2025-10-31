@@ -1,321 +1,202 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>AutoAffiliate AI | $10M Empire</title>
-    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+    <title>BEAST MODE | {{ company }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" rel="stylesheet">
     <style>
         :root {
+            --green: #0f0;
+            --red: #f00;
             --bg: #000;
-            --card-bg: rgba(30, 30, 30, 0.6);
-            --text: #f5f5f7;
-            --accent: #00d4ff;
-            --accent-glow: rgba(0, 212, 255, 0.4);
-            --border: rgba(255, 255, 255, 0.1);
-            --blur: 12px;
+            --glow: 0 0 20px;
         }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             background: var(--bg);
-            color: var(--text);
-            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, sans-serif;
-            min-height: 100vh;
+            color: var(--green);
+            font-family: 'Rajdhani', sans-serif;
+            text-align: center;
             padding: 20px;
-            line-height: 1.6;
+            min-height: 100vh;
             overflow-x: hidden;
         }
-
         .container {
-            max-width: 1100px;
-            margin: 0 auto;
+            max-width: 900px;
+            margin: auto;
+            border: 2px solid var(--green);
+            border-radius: 15px;
             padding: 30px;
-            border-radius: 28px;
-            background: rgba(20, 20, 20, 0.4);
-            backdrop-filter: blur(var(--blur));
-            -webkit-backdrop-filter: blur(var(--blur));
-            border: 1px solid var(--border);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 60px rgba(0, 212, 255, 0.1);
+            box-shadow: var(--glow) var(--green);
+            position: relative;
+            overflow: hidden;
         }
-
-        header {
-            text-align: center;
-            margin-bottom: 40px;
+        .container::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(90deg, transparent, transparent 50px, rgba(0,255,0,0.03) 50px, rgba(0,255,0,0.03) 52px);
+            pointer-events: none;
+            animation: scan 4s linear infinite;
         }
+        @keyframes scan { 0% { transform: translateX(0); } 100% { transform: translateX(-52px); } }
 
         h1 {
-            font-size: 2.8rem;
-            font-weight: 800;
-            background: linear-gradient(90deg, #00d4ff, #00ff9d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            letter-spacing: -0.5px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.5em;
+            text-shadow: var(--glow) var(--green);
+            margin-bottom: 10px;
+            animation: pulse 2s infinite;
         }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
 
-        .subtitle {
-            font-size: 1.1rem;
-            color: #aaa;
-            margin-top: 8px;
-            font-weight: 500;
-        }
-
-        .stats-grid {
+        .stat-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 18px;
-            margin: 40px 0;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
         }
-
         .stat-card {
-            background: var(--card-bg);
-            border-radius: 20px;
-            padding: 22px;
-            text-align: center;
-            border: 1px solid var(--border);
-            transition: all 0.3s ease;
-            backdrop-filter: blur(8px);
+            background: rgba(0, 20, 0, 0.8);
+            border: 1px solid var(--green);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 0 15px rgba(0,255,0,0.3);
+            transition: all 0.3s;
         }
-
         .stat-card:hover {
-            transform: translateY(-6px);
-            box-shadow: 0 15px 30px rgba(0, 212, 255, 0.15);
-            border-color: var(--accent);
+            transform: translateY(-5px);
+            box-shadow: 0 0 25px var(--green);
         }
-
-        .stat-card i {
-            font-size: 1.8rem;
-            color: var(--accent);
-            margin-bottom: 12px;
-            display: block;
-        }
-
         .stat-card h3 {
-            font-size: 0.9rem;
-            color: #aaa;
-            margin-bottom: 6px;
-            font-weight: 500;
-            letter-spacing: 0.5px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1em;
+            margin-bottom: 8px;
+            color: #0f0;
         }
-
         .stat-card p {
-            font-size: 1.6rem;
-            font-weight: 700;
-            color: var(--text);
+            font-size: 1.5em;
+            font-weight: bold;
         }
 
-        .action-buttons {
+        .btn-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 18px;
-            margin: 40px 0;
+            gap: 15px;
+            margin: 30px 0;
         }
-
         .btn {
             padding: 18px;
-            border-radius: 18px;
-            font-weight: 600;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.3em;
             text-align: center;
+            border-radius: 10px;
             cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 1.1rem;
+            transition: all 0.3s;
             text-decoration: none;
             display: block;
         }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #00d4ff, #00ff9d);
+        .btn-green {
+            background: var(--green);
             color: #000;
-            font-weight: 700;
-            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.3);
+            border: 2px solid var(--green);
+            box-shadow: var(--glow) var(--green);
         }
-
-        .btn-primary:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 35px rgba(0, 212, 255, 0.4);
+        .btn-green:hover {
+            background: #000;
+            color: var(--green);
+            box-shadow: 0 0 30px var(--green);
         }
-
-        .btn-danger {
-            background: linear-gradient(135deg, #ff3b30, #ff9500);
-            color: white;
-            font-weight: 700;
-            box-shadow: 0 8px 25px rgba(255, 59, 48, 0.3);
+        .btn-red {
+            background: var(--red);
+            color: #fff;
+            border: 2px solid var(--red);
+            box-shadow: var(--glow) var(--red);
         }
-
-        .btn-danger:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 35px rgba(255, 59, 48, 0.4);
-        }
-
-        .beast-button {
-            text-align: center;
-            margin: 50px 0;
-        }
-
-        .btn-beast {
-            display: inline-block;
-            padding: 28px 70px;
-            font-size: 1.8rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #00ff9d, #00d4ff);
-            color: #000;
-            border-radius: 24px;
-            box-shadow: 0 15px 40px rgba(0, 255, 157, 0.4);
-            transition: all 0.4s ease;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .btn-beast:hover {
-            transform: scale(1.05);
-            box-shadow: 0 20px 50px rgba(0, 255, 157, 0.6);
+        .btn-red:hover {
+            background: #000;
+            color: var(--red);
+            box-shadow: 0 0 30px var(--red);
         }
 
         .nav-links {
             display: flex;
             justify-content: center;
-            gap: 16px;
-            margin: 40px 0;
-            flex-wrap: wrap;
+            gap: 15px;
+            margin-top: 30px;
         }
-
         .nav-links a {
-            padding: 12px 22px;
-            background: rgba(255, 255, 255, 0.08);
-            color: var(--text);
+            padding: 12px 25px;
+            background: rgba(0, 255, 0, 0.1);
+            color: var(--green);
             text-decoration: none;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-weight: 500;
-            border: 1px solid var(--border);
-            transition: all 0.3s ease;
+            border: 1px solid var(--green);
+            border-radius: 8px;
+            font-size: 0.9em;
+            transition: all 0.3s;
         }
-
         .nav-links a:hover {
-            background: var(--accent);
+            background: var(--green);
             color: #000;
-            transform: translateY(-2px);
         }
 
         .terminal {
-            background: rgba(10, 10, 10, 0.8);
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            padding: 20px;
-            margin: 30px 0;
-            font-family: 'SF Mono', Menlo, monospace;
-            color: #00ff9d;
-            font-size: 0.95rem;
-            height: 140px;
+            background: #000;
+            border: 1px solid var(--green);
+            padding: 15px;
+            margin: 20px 0;
+            font-family: 'Roboto Mono', monospace;
+            color: var(--green);
+            height: 120px;
             overflow-y: auto;
-            backdrop-filter: blur(6px);
-            box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
         }
-
-        .terminal-line {
-            opacity: 0;
-            animation: fadeIn 0.5s forwards;
-        }
-
-        @keyframes fadeIn {
-            to { opacity: 1; }
-        }
-
-        .referral-list {
-            margin-top: 30px;
-            background: var(--card-bg);
-            border-radius: 20px;
-            padding: 22px;
-            border: 1px solid var(--border);
-        }
-
-        .referral-list h3 {
-            font-size: 1.1rem;
-            margin-bottom: 14px;
-            color: #aaa;
-        }
-
-        .referral-list ul {
-            list-style: none;
-        }
-
-        .referral-list li {
-            padding: 10px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            font-size: 0.95rem;
-            display: flex;
-            justify-content: space-between;
-        }
-
-        .referral-list li:last-child {
-            border-bottom: none;
-        }
-
-        footer {
-            text-align: center;
-            margin-top: 60px;
-            color: #666;
-            font-size: 0.85rem;
-        }
-
-        footer a {
-            color: var(--accent);
-            text-decoration: none;
+        .terminal::before {
+            content: "> ";
+            color: var(--green);
         }
 
         @media (max-width: 768px) {
-            h1 { font-size: 2.2rem; }
-            .action-buttons { grid-template-columns: 1fr; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-            .btn-beast { font-size: 1.5rem; padding: 22px 50px; }
+            .btn-grid { grid-template-columns: 1fr; }
+            h1 { font-size: 2em; }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>AUTOAFFILIATE AI</h1>
-            <p class="subtitle">{{ company }}</p>
-        </header>
+        <h1>AUTOAFFILIATE AI v7.5</h1>
+        <p style="text-align:center; font-size:1.1em; margin-bottom:20px;">{{ company }}</p>
 
-        <div class="stats-grid">
+        <div class="stat-grid">
             <div class="stat-card">
-                <i class="fas fa-broadcast-tower"></i>
                 <h3>PLATFORMS</h3>
                 <p>X • IG • TikTok • YT</p>
             </div>
             <div class="stat-card">
-                <i class="fas fa-paper-plane"></i>
                 <h3>POSTS SENT</h3>
                 <p>{{ posts_sent }}</p>
             </div>
             <div class="stat-card">
-                <i class="fas fa-users"></i>
                 <h3>REFERRALS</h3>
-                <p>{{ referrals }}</p>
+                <p>{{ referrals }} users</p>
             </div>
             <div class="stat-card">
-                <i class="fas fa-coins"></i>
                 <h3>REF EARNINGS</h3>
                 <p>₦{{ "%.2f" % ref_earnings }}</p>
             </div>
             <div class="stat-card">
-                <i class="fas fa-chart-line"></i>
                 <h3>TOTAL REVENUE</h3>
                 <p>₦{{ "%.2f" % revenue }}</p>
             </div>
         </div>
 
-        <div class="action-buttons">
-            <a href="/miniapp" class="btn btn-primary">Share Referral Link</a>
-            <div class="btn btn-danger" onclick="initiatePayout()">WITHDRAW ₦{{ "%.2f" % revenue }}</div>
+        <div class="btn-grid">
+            <a href="/miniapp" class="btn btn-green">Share Referral Link</a>
+            <div class="btn btn-red" onclick="initiatePayout()">WITHDRAW ₦{{ "%.2f" % revenue }}</div>
         </div>
 
-        <div class="beast-button">
-            <div class="btn-beast" onclick="launchBeast()">
-                ACTIVATE BEAST
+        <div style="text-align:center;">
+            <div class="btn btn-red" onclick="launchBeast()" style="display:inline-block; font-size:1.8em; padding:25px 50px;">
+                LUCK BEAST
             </div>
         </div>
 
@@ -325,58 +206,19 @@
             <a href="/logout">Logout</a>
         </div>
 
-        <div class="referral-list">
-            <h3>Recent Referrals</h3>
-            <ul>
-                {% for ref in ref_list %}
-                <li>
-                    <span>{{ ref['referred_email'] }}</span>
-                    <span>₦{{ "%.2f" % ref['reward'] }} • {{ ref['created_at'] }}</span>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-
         <div class="terminal" id="terminal">
-            <div class="terminal-line">> System online. Awaiting BEAST activation...</div>
+            > System idle... Awaiting BEAST activation...
         </div>
     </div>
-
-    <footer>
-        <p>© 2025 AutoAffiliate AI | <a href="/privacy">Privacy Policy</a></p>
-    </footer>
 
     <script>
         function launchBeast() {
             const terminal = document.getElementById('terminal');
-            const lines = [
-                "> Initializing LUCK BEAST v7.4...",
-                "> Queueing 500 AI Shorts...",
-                "> HeyGen + YouTube API connected",
-                "> $10M Revenue Engine ENGAGED"
-            ];
-
-            lines.forEach((line, i) => {
-                setTimeout(() => {
-                    const div = document.createElement('div');
-                    div.className = 'terminal-line';
-                    div.textContent = line;
-                    terminal.appendChild(div);
-                    terminal.scrollTop = terminal.scrollHeight;
-                }, i * 600);
-            });
-
+            terminal.innerHTML += "<br>> Initializing LUNCH BEAST...<br>> Queueing 500 Shorts...<br>> HeyGen + YouTube ACTIVE<br>> $1M MODE ENGAGED";
             fetch('/beast_campaign')
                 .then(r => r.json())
                 .then(d => {
-                    setTimeout(() => {
-                        const div = document.createElement('div');
-                        div.className = 'terminal-line';
-                        div.style.color = '#00ff9d';
-                        div.textContent = `> ${d.status || 'BEAST UNLEASHED'}`;
-                        terminal.appendChild(div);
-                        terminal.scrollTop = terminal.scrollHeight;
-                    }, lines.length * 600);
+                    terminal.innerHTML += `<br> > {d.status}`;
                 });
         }
 
@@ -391,6 +233,7 @@
                 }).then(r => r.json()).then(d => alert(d.status || d.error));
             }
         }
-    </script>
+    </style>
+</head>
 </body>
 </html>
