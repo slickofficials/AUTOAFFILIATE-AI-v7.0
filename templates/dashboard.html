@@ -1,88 +1,24 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- SEO CORE -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | SlickOfficials AI v7.6 | $10M Empire</title>
-    <meta name="description" content="Real-time earnings: ₦{{ "%.2f" % revenue }}. {{ posts_sent }} posts. {{ referrals }} referrals. Auto YouTube Shorts + Telegram Mini App.">
+    <title>Dashboard | SlickOfficials AI v7.7 | $10M Empire</title>
     <meta name="robots" content="noindex, nofollow">
-
-    <!-- Open Graph -->
-    <meta property="og:title" content="SlickOfficials Dashboard | $10M Empire">
-    <meta property="og:description" content="Live: ₦{{ "%.2f" % revenue }} earned. {{ posts_sent }} posts. {{ referrals }} referrals.">
-    <meta property="og:image" content="https://slickofficials.com/static/og-dashboard.jpg">
-    <meta property="og:url" content="https://slickofficials.com.com/dashboard">
-    <meta property="og:type" content="website">
-
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="SlickOfficials Dashboard | $10M Empire">
-    <meta name="twitter:description" content="Live: ₦{{ "%.2f" % revenue }} earned. {{ posts_sent }} posts. {{ referrals }} referrals.">
-    <meta name="twitter:image" content="https://slickofficials.com/static/og-dashboard.jpg">
-
-    <!-- Favicon -->
-    <link rel="icon" href="/static/favicon.ico" type="image/x-icon">
-
-    <!-- Preload Critical CSS -->
-    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Rajdhani:wght@700&display=swap" rel="stylesheet"></noscript>
-
-    <!-- Critical CSS (Inline) -->
-    <style>
-        :root{--green:#0f0;--red:#f00;--bg:#000;--glow:0 0 20px}
-        *{margin:0;padding:0;box-sizing:border-box}
-        body{background:var(--bg);color:var(--green);font-family:'Rajdhani',sans-serif;text-align:center;padding:20px;min-height:100vh;overflow-x:hidden}
-        .container{max-width:900px;margin:auto;border:2px solid var(--green);border-radius:15px;padding:30px;box-shadow:var(--glow) var(--green);position:relative;overflow:hidden}
-        .container::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;background:repeating-linear-gradient(90deg,transparent,transparent 50px,rgba(0,255,0,0.03) 50px,rgba(0,255,0,0.03) 52px);pointer-events:none;animation:scan 4s linear infinite}
-        @keyframes scan{0%{transform:translateX(0)}100%{transform:translateX(-52px)}}
-        h1{font-family:'Orbitron',sans-serif;font-size:2.5em;text-shadow:var(--glow) var(--green);margin-bottom:10px;animation:pulse 2s infinite}
-        @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.7}}
-        .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;margin:30px 0}
-        .stat-card{background:rgba(0,20,0,0.8);border:1px solid var(--green);border-radius:10px;padding:20px;box-shadow:0 0 15px rgba(0,255,0,0.3);transition:all .3s}
-        .stat-card:hover{transform:translateY(-5px);box-shadow:0 0 25px var(--green)}
-        .stat-card h3{font-family:'Orbitron',sans-serif;font-size:1.1em;margin-bottom:8px;color:#0f0}
-        .stat-card p{font-size:1.5em;font-weight:bold}
-        .btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin:30px 0}
-        .btn{padding:18px;font-family:'Orbitron',sans-serif;font-size:1.3em;text-align:center;border-radius:10px;cursor:pointer;transition:all .3s;text-decoration:none;display:block}
-        .btn-green{background:var(--green);color:#000;border:2px solid var(--green);box-shadow:var(--glow) var(--green)}
-        .btn-green:hover{background:#000;color:var(--green);box-shadow:0 0 30px var(--green)}
-        .btn-red{background:var(--red);color:#fff;border:2px solid var(--red);box-shadow:var(--glow) var(--red)}
-        .btn-red:hover{background:#000;color:var(--red);box-shadow:0 0 30px var(--red)}
-        .nav-links{display:flex;justify-content:center;gap:15px;margin-top:30px}
-        .nav-links a{padding:12px 25px;background:rgba(0,255,0,0.1);color:var(--green);text-decoration:none;border:1px solid var(--green);border-radius:8px;font-size:0.9em;transition:all .3s}
-        .nav-links a:hover{background:var(--green);color:#000}
-        .terminal{background:#000;border:1px solid var(--green);padding:15px;margin:20px 0;font-family:'Roboto Mono',monospace;color:var(--green);height:120px;overflow-y:auto;border-radius:8px}
-        .terminal::before{content:"> ";color:var(--green)}
-        @media(max-width:768px){.btn-grid{grid-template-columns:1fr}h1{font-size:2em}}
-    </style>
+    <link rel="icon" href="/static/favicon.ico">
+    <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
     <div class="container">
-        <h1>AUTOAFFILIATE AI v7.6</h1>
+        <h1>AUTOAFFILIATE AI v7.7</h1>
         <p style="text-align:center;font-size:1.1em;margin-bottom:20px;">{{ company }}</p>
 
         <div class="stat-grid">
-            <div class="stat-card">
-                <h3>PLATFORMS</h3>
-                <p>X • IG • TikTok • YT</p>
-            </div>
-            <div class="stat-card">
-                <h3>POSTS SENT</h3>
-                <p>{{ posts_sent }}</p>
-            </div>
-            <div class="stat-card">
-                <h3>REFERRALS</h3>
-                <p>{{ referrals }} users</p>
-            </div>
-            <div class="stat-card">
-                <h3>REF EARNINGS</h3>
-                <p>₦{{ "%.2f" % ref_earnings }}</p>
-            </div>
-            <div class="stat-card">
-                <h3>TOTAL REVENUE</h3>
-                <p>₦{{ "%.2f" % revenue }}</p>
-            </div>
+            <div class="stat-card"><h3>PLATFORMS</h3><p>X • IG • TikTok • YT</p></div>
+            <div class="stat-card"><h3>POSTS SENT</h3><p data-post-count>{{ posts_sent }}</p></div>
+            <div class="stat-card"><h3>REFERRALS</h3><p data-referrals>{{ referrals }}</p></div>
+            <div class="stat-card"><h3>REF EARNINGS</h3><p data-ref-earnings>₦{{ "%.2f" % ref_earnings }}</p></div>
+            <div class="stat-card"><h3>TOTAL REVENUE</h3><p data-revenue>₦{{ "%.2f" % revenue }}</p></div>
         </div>
 
         <div class="btn-grid">
@@ -92,7 +28,7 @@
 
         <div style="text-align:center;">
             <div class="btn btn-red" onclick="launchBeast()" style="display:inline-block;font-size:1.8em;padding:25px 50px;">
-                LUCK BEAST
+                LUNCH BEAST
             </div>
         </div>
 
@@ -107,33 +43,33 @@
         </div>
     </div>
 
-    <!-- Async JS -->
     <script>
         function launchBeast() {
-            const terminal = document.getElementById('terminal');
-            terminal.innerHTML += "<br>> Initializing LUCK BEAST...<br>> Queueing 500 Shorts...<br>> HeyGen + YouTube ACTIVE<br>> $1M MODE ENGAGED";
-            fetch('/beast_campaign')
-                .then(r => r.json())
-                .then(d => {
-                    terminal.innerHTML += `<br>> ${d.status || 'ACTIVATED'}`;
-                })
-                .catch(() => terminal.innerHTML += "<br>> ERROR: Check logs");
+            const t = document.getElementById('terminal');
+            t.innerHTML += "<br>> Initializing LUCK BEAST...<br>> Queueing 500 Shorts...<br>> HeyGen + YouTube ACTIVE<br>> $1M MODE ENGAGED";
+            fetch('/beast_campaign').then(r => r.json()).then(d => t.innerHTML += `<br>> ${d.status}`);
         }
 
         function initiatePayout() {
             const amount = prompt("Amount (₦):", "{{ "%.2f" % revenue }}");
             const bank = prompt("Paystack Recipient Code:");
             if (amount && bank) {
-                fetch('/payout', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({amount: parseFloat(amount), bank_account: bank})
-                })
-                .then(r => r.json())
-                .then(d => alert(d.status || d.error))
-                .catch(() => alert("Payout failed. Check logs."));
+                fetch('/payout', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({amount: parseFloat(amount), bank_account: bank})})
+                    .then(r => r.json()).then(d => alert(d.status || d.error));
             }
         }
+
+        // LIVE STATS AUTO-REFRESH
+        function refreshStats() {
+            fetch('/api/stats').then(r => r.json()).then(data => {
+                document.querySelector('[data-post-count]').textContent = data.posts_sent;
+                document.querySelector('[data-revenue]').textContent = `₦${data.revenue.toFixed(2)}`;
+                document.querySelector('[data-referrals]').textContent = data.referrals;
+                document.querySelector('[data-ref-earnings]').textContent = `₦${data.ref_earnings.toFixed(2)}`;
+            });
+        }
+        setInterval(refreshStats, 30000);
+        refreshStats();
     </script>
 </body>
 </html>
