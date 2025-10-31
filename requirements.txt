@@ -1,17 +1,31 @@
-gunicorn==21.2.0
+# === CORE FRAMEWORK ===
 Flask==2.3.3
-redis==5.0.1
-rq==1.15.1
-psycopg[binary]==3.2.3
-requests==2.31.0
-bcrypt==4.1.2
-tweepy>=4.14.0
-openai==1.35.3
-python-telegram-bot==20.7
-google-auth-oauthlib==1.2.1
-google-auth-httplib2==0.2.0
-google-api-python-client==2.111.0
 Flask-Login==0.6.3
 Flask-Migrate==4.0.5
 Flask-SQLAlchemy==3.0.5
+Flask-Compress==1.14  # GZIP = 3x FASTER
+
+# === DATABASE & QUEUE ===
+psycopg[binary]==3.2.3
+redis==5.0.1
+rq==1.15.1
+
+# === SECURITY & AUTH ===
+bcrypt==4.1.2
 python-dotenv==1.0.1
+
+# === SOCIAL & AI APIs ===
+tweepy>=4.14.0
+openai==1.35.3
+python-telegram-bot==20.7
+
+# === YOUTUBE HEADLESS ===
+google-auth-oauthlib==1.2.1
+google-auth-httplib2==0.2.0
+google-api-python-client==2.111.0
+
+# === HTTP & UTILS ===
+requests==2.31.0
+
+# === PRODUCTION SERVER ===
+gunicorn==21.2.0
