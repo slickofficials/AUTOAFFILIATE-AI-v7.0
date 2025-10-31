@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BEAST DASHBOARD | SlickOfficials v8.0</title>
+    <title>BEAST DASHBOARD | SlickOfficials v8.2</title>
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" href="/static/favicon.ico">
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Inter:wght@400;700&display=swap" rel="stylesheet">
@@ -18,68 +18,55 @@
         }
         * { margin:0; padding:0; box-sizing:border-box; }
         body {
-            background: var(--bg);
+            background: #000;
             color: var(--text);
             font-family: 'Inter', sans-serif;
-            overflow-x: hidden;
+            overflow: hidden;
             min-height: 100vh;
             position: relative;
         }
 
-        /* Animated Background */
-        .bg-animation {
+        /* SHADER CANVAS */
+        #shader-canvas {
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: radial-gradient(circle at 20% 80%, rgba(0,212,255,0.1) 0%, transparent 50%),
-                        radial-gradient(circle at 80% 20%, rgba(0,255,157,0.1) 0%, transparent 50%);
-            animation: pulse-bg 8s infinite alternate;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
             z-index: -1;
-        }
-        @keyframes pulse-bg {
-            0% { opacity: 0.6; transform: scale(1); }
-            100% { opacity: 0.9; transform: scale(1.05); }
+            pointer-events: none;
         }
 
         /* Header */
         .header {
             text-align: center;
             padding: 2rem 1rem;
-            background: var(--metal);
-            border-bottom: 1px solid #333;
-            box-shadow: 0 4px 20px rgba(0,212,255,0.2);
+            background: rgba(20,20,20,0.4);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0,212,255,0.3);
+            box-shadow: 0 4px 20px rgba(0,212,255,0.3);
             position: relative;
-            overflow: hidden;
             z-index: 10;
+            border-radius: 0 0 25px 25px;
         }
-        .header::before {
-            content: '';
-            position: absolute;
-            top: 0; left: -100%;
-            width: 50%; height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-            animation: shine 3s infinite;
-        }
-        @keyframes shine { 0% { left: -100%; } 100% { left: 100%; } }
         .header h1 {
             font-family: 'Orbitron', sans-serif;
-            font-size: 2.2rem;
+            font-size: 2.3em;
             background: linear-gradient(90deg, #00d4ff, #00ff9d);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
-            text-shadow: 0 0 10px #00d4ff;
+            text-shadow: 0 0 20px #00d4ff;
             animation: title-glow 2s infinite alternate;
         }
         @keyframes title-glow {
-            0% { text-shadow: 0 0 10px #00d4ff; }
-            100% { text-shadow: 0 0 25px #00d4ff, 0 0 40px #00aaff; }
+            0% { text-shadow: 0 0 20px #00d4ff; }
+            100% { text-shadow: 0 0 40px #00aaff, 0 0 60px #00d4ff; }
         }
         .time {
-            font-size: 1em;
+            font-size: 1.1em;
             color: #00ff9d;
             margin-top: 0.5rem;
             font-weight: bold;
-            text-shadow: 0 0 8px #00ff9d;
+            text-shadow: 0 0 10px #00ff9d;
         }
 
         /* Container */
@@ -96,9 +83,9 @@
 
         /* Glass Card */
         .card {
-            background: rgba(20,20,20,0.6);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(0,212,255,0.3);
+            background: rgba(20,20,20,0.5);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0,212,255,0.4);
             border-radius: 20px;
             padding: 1.5rem;
             box-shadow: 0 0 25px rgba(0,212,255,0.3);
@@ -107,21 +94,21 @@
             overflow: hidden;
         }
         .card:hover {
-            transform: translateY(-8px);
-            box-shadow: 0 0 35px #00d4ff, 0 0 55px #00aaff;
+            transform: translateY(-10px);
+            box-shadow: 0 0 40px #00d4ff, 0 0 60px #00aaff;
         }
         .card h3 {
             font-family: 'Orbitron', sans-serif;
             font-size: 1.1em;
             margin-bottom: 0.5rem;
             color: #00ff9d;
-            text-shadow: 0 0 10px #00ff9d;
+            text-shadow: 0 0 15px #00ff9d;
         }
         .card p {
-            font-size: 1.6em;
+            font-size: 1.7em;
             font-weight: bold;
             color: #e0f7ff;
-            text-shadow: 0 0 8px rgba(0,212,255,0.5);
+            text-shadow: 0 0 10px rgba(0,212,255,0.5);
         }
 
         /* Beast Button */
@@ -157,14 +144,6 @@
         .beast-btn button:hover {
             transform: scale(1.08);
             box-shadow: 0 0 60px #ff0055, 0 0 100px #ff3300;
-        }
-        .beast-btn button:active {
-            animation: beast-activate 1.2s ease;
-        }
-        @keyframes beast-activate {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.15); box-shadow: 0 0 120px #ff3300; }
-            100% { transform: scale(1); }
         }
 
         /* Terminal */
@@ -214,7 +193,6 @@
         @media (max-width: 768px) {
             .header h1 { font-size: 1.9em; }
             .beast-btn button { font-size: 1.6em; padding: 1.4rem 3.5rem; }
-            .container { padding: 1rem; }
         }
     </style>
 </head>
@@ -222,7 +200,7 @@
     <canvas id="shader-canvas"></canvas>
 
     <header class="header">
-        <h1>BEAST DASHBOARD v8.1</h1>
+        <h1>BEAST DASHBOARD v8.2</h1>
         <div class="time" id="time"></div>
         <p style="margin-top:0.5rem;font-size:0.9em;color:#00ff9d;">{{ company }}</p>
     </header>
@@ -230,7 +208,7 @@
     <div class="container">
         <div class="card"><h3>Platforms</h3><p>X • IG • TikTok • YT</p></div>
         <div class="card"><h3>Posts Sent</h3><p data-post-count>{{ posts_sent }}</p></div>
-        <div class="card"><h3>Referrals</h3><p data-ref-referrals>{{ referrals }}</p></div>
+        <div class="card"><h3>Referrals</h3><p data-referrals>{{ referrals }}</p></div>
         <div class="card"><h3>Ref Earnings</h3><p data-ref-earnings>₦{{ "%.2f" % ref_earnings }}</p></div>
         <div class="card"><h3>Total Revenue</h3><p data-revenue>₦{{ "%.2f" % revenue }}</p></div>
 
@@ -244,13 +222,13 @@
 
         <div class="nav">
             <a href="/miniapp" target="_blank">Telegram Mini App</a>
-            <a href="/youtube_auth">YouTube Shorts</a>
+            <a href="/youtube_auth" target="_blank">YouTube Shorts</a>
             <a href="/logout">Logout</a>
         </div>
     </div>
 
     <script>
-        // === ADVANCED WEBGL FRAGMENT SHADER ===
+        // === WEBGL SHADER (Same as v8.1) ===
         const canvas = document.getElementById('shader-canvas');
         const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
         if (!gl) { document.body.innerHTML = '<h1 style="color:red;text-align:center;padding:50px;">WebGL NOT SUPPORTED</h1>'; }
@@ -258,22 +236,17 @@
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
 
-        // Vertex Shader (Basic)
         const vsSource = `
             attribute vec2 a_position;
-            void main() {
-                gl_Position = vec4(a_position, 0.0, 1.0);
-            }
+            void main() { gl_Position = vec4(a_position, 0.0, 1.0); }
         `;
 
-        // ADVANCED FRAGMENT SHADER — MULTI-LAYER NEON PLASMA + VORTEX + HOLOGRAPHIC SCANLINES + BEAST PULSE
         const fsSource = `
             precision highp float;
             uniform float u_time;
             uniform vec2 u_resolution;
             uniform vec2 u_mouse;
 
-            // Noise
             float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
             float noise(vec2 p) {
                 vec2 i = floor(p); vec2 f = fract(p);
@@ -286,45 +259,26 @@
                 return v;
             }
 
-            // Vortex
-            vec2 vortex(vec2 uv, vec2 center, float t) {
-                vec2 dir = uv - center;
-                float dist = length(dir);
-                float angle = atan(dir.y, dir.x) + t * 3.0 + 1.0 / (dist + 0.1);
-                return center + vec2(cos(angle), sin(angle)) * dist;
-            }
-
             void main() {
                 vec2 uv = gl_FragCoord.xy / u_resolution.xy;
                 vec2 mouse = u_mouse / u_resolution.xy;
-                vec2 center = vec2(0.5, 0.5);
                 float t = u_time * 0.4;
 
-                // LAYER 1: PLASMA BASE
                 float plasma = sin(uv.x * 10.0 + t) * sin(uv.y * 10.0 + t * 1.2) * 0.5 + 0.5;
                 plasma += sin((uv.x - uv.y) * 15.0 - t * 3.0) * 0.3;
                 plasma = pow(plasma, 1.5) * 1.8;
 
-                // LAYER 2: VORTEX DISTORTION
-                uv = vortex(uv, mouse, t * 2.0);
-                float vortex = sin(length(uv - mouse) * 25.0 - t * 5.0) / (length(uv - mouse) * 15.0 + 1.0);
+                vec2 toMouse = mouse - uv;
+                float dist = length(toMouse);
+                float vortex = sin(atan(toMouse.y, toMouse.x) * 8.0 - t * 3.0 + dist * 20.0) / (dist * 15.0 + 1.0);
                 vortex = pow(abs(vortex), 1.2) * 3.0;
 
-                // LAYER 3: HOLOGRAPHIC SCANLINES + GLITCH
                 float scanlines = sin(uv.y * u_resolution.y * 1.8) * 0.05 + 0.95;
-                float glitch = step(0.99, hash(vec2(t * 15.0, uv.y * u_resolution.y))) * 0.4;
-                glitch += step(0.995, hash(vec2(uv.x * u_resolution.x, t * 8.0))) * 0.3;
+                float glitch = step(0.99, hash(vec2(t * 15.0, uv.y))) * 0.4;
 
-                // LAYER 4: BEAST PULSE CORE
-                vec2 toCenter = uv - center;
-                float dist = length(toCenter);
                 float pulse = pow(1.0 - dist, 4.0) * (sin(t * 8.0) * 0.5 + 0.5) * 3.0;
-
-                // LAYER 5: FBM METAL + NOISE
-                float fbmNoise = fbm(uv * 4.0 + t * 0.8) * 0.5;
                 float metal = pow(fbm(uv * 60.0 + t * 3.0), 3.0) * 0.4;
 
-                // COMPOSE COLOR
                 vec3 col = vec3(0.0);
                 col += vec3(0.0, 0.7, 1.0) * plasma * 3.0;
                 col += vec3(0.0, 1.0, 0.7) * vortex * 2.5;
@@ -332,9 +286,7 @@
                 col += vec3(0.3, 0.3, 0.3) * metal;
                 col += vec3(0.2, 0.1, 0.3) * glitch;
                 col *= scanlines;
-                col += vec3(0.1, 0.0, 0.2) * fbmNoise;
 
-                // FINAL OUTPUT
                 gl_FragColor = vec4(col, 1.0);
             }
         `;
@@ -344,8 +296,7 @@
             gl.shaderSource(shader, source);
             gl.compileShader(shader);
             if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
-                gl.deleteShader(shader);
+                console.error(gl.getShaderInfoLog(shader));
                 return null;
             }
             return shader;
@@ -357,14 +308,10 @@
         gl.attachShader(program, vertexShader);
         gl.attachShader(program, fragmentShader);
         gl.linkProgram(program);
-        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-            console.error('Program link error:', gl.getProgramInfoLog(program));
-        }
 
         const positionBuffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-        const positions = [-1, -1, 1, -1, -1, 1, 1, 1];
-        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
 
         const positionLocation = gl.getAttribLocation(program, "a_position");
         const timeLocation = gl.getUniformLocation(program, "u_time");
@@ -372,26 +319,19 @@
         const mouseLocation = gl.getUniformLocation(program, "u_mouse");
 
         let mouseX = 0, mouseY = 0;
-        window.addEventListener('mousemove', (e) => {
-            mouseX = e.clientX;
-            mouseY = e.clientY;
-        });
+        window.addEventListener('mousemove', e => { mouseX = e.clientX; mouseY = e.clientY; });
 
         function render(now) {
             now *= 0.001;
             gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
-            gl.clearColor(0, 0, 0, 0);
             gl.clear(gl.COLOR_BUFFER_BIT);
-
             gl.useProgram(program);
             gl.enableVertexAttribArray(positionLocation);
             gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
             gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
-
             gl.uniform1f(timeLocation, now);
             gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
             gl.uniform2f(mouseLocation, mouseX, mouseY);
-
             gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
             requestAnimationFrame(render);
         }
@@ -406,14 +346,13 @@
         // === LIVE TIME ===
         function updateTime() {
             const now = new Date();
-            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const date = now.toLocaleDateString('en-GB');
-            document.getElementById('time').textContent = `${date} | ${time}`;
+            document.getElementById('time').textContent = 
+                `${now.toLocaleDateString('en-GB')} | ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
         }
         updateTime();
         setInterval(updateTime, 1000);
 
-        // === ACTIVATE BEAST ===
+        // === LAUNCH BEAST ===
         function activateBeast() {
             const terminal = document.getElementById('terminal');
             terminal.innerHTML = `
@@ -424,11 +363,9 @@
                 > $1M/MONTH MODE: <span style="color:#ff3300;">ENGAGED</span><br>
                 > <span style="color:#ff0055; font-weight:bold; font-size:1.1em;">BEAST IS NOW LIVE</span>
             `;
-            fetch('/beast_campaign')
-                .then(r => r.json())
-                .then(d => {
-                    terminal.innerHTML += `<br>> ${d.status}`;
-                });
+            fetch('/beast_campaign').then(r => r.json()).then(d => {
+                terminal.innerHTML += `<br>> ${d.status}`;
+            });
         }
 
         // === LIVE STATS ===
