@@ -1,5 +1,6 @@
-# app.py - v7.5 $10M EMPIRE (HEADLESS YOUTUBE + TELEGRAM + RENDER SAFE)
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+# app.py - v7.6 $10M EMPIRE (SEO + GZIP + HEADLESS YOUTUBE + RENDER SAFE)
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
+from flask_compress import Compress  # GZIP = 3x FASTER
 import os
 import redis
 import rq
@@ -13,43 +14,64 @@ import json
 import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 import requests
+from datetime import datetime
 
+# === INIT ===
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'slickofficials_hq_2025')
+Compress(app)  # ENABLE GZIP COMPRESSION
 COMPANY = "Slickofficials HQ | Amson Multi Global LTD"
 
-# CONFIG
+# === CONFIG ===
 DB_URL = os.getenv('DATABASE_URL')
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 r = redis.from_url(REDIS_URL)
 queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# DATABASE
+# === CACHE HEADERS ===
+@app.after_request
+def add_header(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Cache-Control'] = 'public, max-age=31536000'
+    response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+    return response
+
+# === DATABASE ===
 def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# FRONT PAGE (INDEX.HTML WITH PRIVACY/TERMS LINKS)
+# === SERVE SITEMAP & ROBOTS ===
+@app.route('/sitemap.xml')
+def sitemap():
+    return send_from_directory('.', 'sitemap.xml')
+
+@app.route('/robots.txt')
+def robots():
+    return send_from_directory('.', 'robots.txt')
+
+# === FRONT PAGE ===
 @app.route('/')
 def index():
-    return render_template('index.html', company=COMPANY)
+    return render_template('index.html', company=COMPANY, title="SlickOfficials | $100K/Month Auto Affiliate AI SaaS")
 
-# PRIVACY POLICY
+# === STATIC PAGES ===
 @app.route('/privacy')
 def privacy():
-    return render_template('privacy.html', company=COMPANY)
+    return render_template('privacy.html', company=COMPANY, title="Privacy Policy")
 
-# TERMS OF SERVICE
 @app.route('/terms')
 def terms():
-    return render_template('terms.html', company=COMPANY)
+    return render_template('terms.html', company=COMPANY, title="Terms of Service")
 
-# LOGIN
+# === LOGIN ===
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form['email']
+        email = request.form['email'].strip().lower()
         password = request.form['password'].encode()
         conn, cur = get_db()
         cur.execute("SELECT * FROM users WHERE email = %s", (email,))
@@ -59,14 +81,14 @@ def login():
             session['user_id'] = user['id']
             return redirect(url_for('dashboard'))
         flash('Invalid credentials')
-    return render_template('login.html', company=COMPANY)
+    return render_template('login.html', company=COMPANY, title="Login")
 
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
     return redirect(url_for('index'))
 
-# DASHBOARD
+# === DASHBOARD ===
 @app.route('/dashboard')
 def dashboard():
     if 'user_id' not in session:
@@ -96,15 +118,16 @@ def dashboard():
                          referrals=referrals,
                          ref_earnings=ref_earnings,
                          ref_list=ref_list,
-                         company=COMPANY)
+                         company=COMPANY,
+                         title="Dashboard | $10M Empire")
 
-# BEAST CAMPAIGN
+# === BEAST CAMPAIGN ===
 @app.route('/beast_campaign')
 def beast_campaign():
-    queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v7.5 $10M BEAST MODE ACTIVATED'})
+    job = queue.enqueue('worker.run_daily_campaign')
+    return jsonify({'status': 'v7.6 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
 
-# YOUTUBE AUTH - HEADLESS (RENDER SAFE)
+# === YOUTUBE AUTH (HEADLESS + RENDER SAFE) ===
 @app.route('/youtube_auth')
 def youtube_auth():
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
@@ -166,24 +189,34 @@ def youtube_callback():
             os.unlink(temp_path)
         return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
 
+# === TELEGRAM MINI APP ===
 @app.route('/miniapp')
 def miniapp():
-    return render_template('miniapp.html', company=COMPANY)
+    return render_template('miniapp.html', company=COMPANY, title="Referral Mini App")
 
+# === UPSELL ===
 @app.route('/upsell', methods=['POST'])
 def upsell():
-    email = request.json['email']
+    email = request.json.get('email')
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
     mailchimp_key = os.getenv('MAILCHIMP_API_KEY')
     list_id = os.getenv('MAILCHIMP_LIST_ID')
     if not mailchimp_key or not list_id:
-        return jsonify({'error': 'Mailchimp not configured'})
+        return jsonify({'error': 'Mailchimp not configured'}), 500
     url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
     headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
     payload = {"email_address": email, "status": "subscribed", "tags": ["affiliate", "beast-mode"]}
-    response = requests.post(url, headers=headers, json=payload)
+    response = requests.post(url, headers=headers, json=payload, timeout=10)
     if response.status_code == 200:
         return jsonify({'status': 'VIP Upsell Email Sent!'})
-    return jsonify({'error': 'Email failed: ' + response.text})
+    return jsonify({'error': 'Email failed: ' + response.text}), 500
 
+# === 404 PAGE ===
+@app.errorhandler(404)
+def not_found(e):
+    return render_template('404.html', company=COMPANY, title="404 - Not Found"), 404
+
+# === RUN ===
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.getenv('PORT', 10000)), debug=False)
