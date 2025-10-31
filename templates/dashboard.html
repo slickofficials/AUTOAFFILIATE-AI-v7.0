@@ -3,63 +3,437 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard | SlickOfficials AI v7.7 | $10M Empire</title>
+    <title>BEAST DASHBOARD | SlickOfficials v8.1</title>
     <meta name="robots" content="noindex, nofollow">
     <link rel="icon" href="/static/favicon.ico">
-    <link rel="stylesheet" href="/static/dashboard.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@900&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --metal: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+            --glow-blue: 0 0 20px #00d4ff, 0 0 40px #00aaff;
+            --glow-green: 0 0 20px #00ff9d, 0 0 40px #00cc77;
+            --text: #e0f7ff;
+            --accent: #00d4ff;
+            --bg: #0a0a0a;
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body {
+            background: #000;
+            color: var(--text);
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            min-height: 100vh;
+            position: relative;
+        }
+
+        /* ADVANCED SHADER CANVAS */
+        #shader-canvas {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            padding: 2rem 1rem;
+            background: rgba(20,20,20,0.4);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(0,212,255,0.3);
+            box-shadow: 0 4px 20px rgba(0,212,255,0.3);
+            position: relative;
+            z-index: 10;
+            border-radius: 0 0 25px 25px;
+        }
+        .header h1 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.3em;
+            background: linear-gradient(90deg, #00d4ff, #00ff9d);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 20px #00d4ff;
+            animation: title-glow 2s infinite alternate;
+        }
+        @keyframes title-glow {
+            0% { text-shadow: 0 0 20px #00d4ff; }
+            100% { text-shadow: 0 0 40px #00aaff, 0 0 60px #00d4ff; }
+        }
+        .time {
+            font-size: 1.1em;
+            color: #00ff9d;
+            margin-top: 0.5rem;
+            font-weight: bold;
+            text-shadow: 0 0 10px #00ff9d;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 1.5rem;
+            display: grid;
+            gap: 1.5rem;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            z-index: 5;
+            position: relative;
+        }
+
+        /* Glass Card */
+        .card {
+            background: rgba(20,20,20,0.5);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0,212,255,0.4);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: 0 0 25px rgba(0,212,255,0.3);
+            transition: all 0.4s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .card::before {
+            content: '';
+            position: absolute;
+            top: -50%; left: -50%;
+            width: 200%; height: 200%;
+            background: radial-gradient(circle, rgba(0,212,255,0.1) 0%, transparent 70%);
+            animation: card-glow 6s infinite;
+            pointer-events: none;
+        }
+        @keyframes card-glow {
+            0%, 100% { transform: translate(0, 0); }
+            50% { transform: translate(20%, 20%); }
+        }
+        .card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 0 40px #00d4ff, 0 0 60px #00aaff;
+        }
+        .card h3 {
+            font-family: 'Orbitron', sans-serif;
+            font-size: 1.1em;
+            margin-bottom: 0.5rem;
+            color: #00ff9d;
+            text-shadow: 0 0 15px #00ff9d;
+        }
+        .card p {
+            font-size: 1.7em;
+            font-weight: bold;
+            color: #e0f7ff;
+            text-shadow: 0 0 10px rgba(0,212,255,0.5);
+        }
+
+        /* Beast Button */
+        .beast-btn {
+            grid-column: 1 / -1;
+            text-align: center;
+            padding: 2.5rem;
+        }
+        .beast-btn button {
+            background: linear-gradient(45deg, #ff0055, #ff3300, #ff5500);
+            background-size: 200% 200%;
+            color: white;
+            border: none;
+            padding: 1.8rem 5rem;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.2em;
+            font-weight: 900;
+            border-radius: 60px;
+            cursor: pointer;
+            box-shadow: 0 0 40px #ff0055, 0 0 70px #ff3300;
+            transition: all 0.5s;
+            position: relative;
+            overflow: hidden;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            animation: btn-pulse 2s infinite;
+            z-index: 10;
+        }
+        @keyframes btn-pulse {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+        .beast-btn button:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 60px #ff0055, 0 0 100px #ff3300;
+        }
+        .beast-btn button:active {
+            animation: beast-activate 1.2s ease;
+        }
+        @keyframes beast-activate {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15); box-shadow: 0 0 120px #ff3300; }
+            100% { transform: scale(1); }
+        }
+
+        /* Terminal */
+        .terminal {
+            grid-column: 1 / -1;
+            background: rgba(0,0,0,0.8);
+            border: 1px solid #00d4ff;
+            border-radius: 18px;
+            padding: 1.2rem;
+            height: 130px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            color: #00ff9d;
+            box-shadow: inset 0 0 25px rgba(0,212,255,0.3);
+            z-index: 5;
+            backdrop-filter: blur(8px);
+        }
+        .terminal::before { content: "> "; color: #00d4ff; font-weight: bold; }
+
+        /* Nav */
+        .nav {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: center;
+            gap: 1.2rem;
+            flex-wrap: wrap;
+        }
+        .nav a {
+            padding: 0.9rem 1.8rem;
+            background: rgba(0,212,255,0.15);
+            color: #00d4ff;
+            text-decoration: none;
+            border-radius: 50px;
+            border: 1.5px solid #00d4ff;
+            font-weight: bold;
+            transition: all 0.4s;
+            box-shadow: 0 0 15px rgba(0,212,255,0.3);
+            z-index: 10;
+        }
+        .nav a:hover {
+            background: #00d4ff;
+            color: #000;
+            box-shadow: 0 0 30px #00d4ff;
+            transform: translateY(-3px);
+        }
+
+        @media (max-width: 768px) {
+            .header h1 { font-size: 1.9em; }
+            .beast-btn button { font-size: 1.6em; padding: 1.4rem 3.5rem; }
+            .container { padding: 1rem; }
+        }
+    </style>
 </head>
 <body>
+    <!-- ADVANCED SHADER CANVAS -->
+    <canvas id="shader-canvas"></canvas>
+
+    <header class="header">
+        <h1>BEAST DASHBOARD v8.1</h1>
+        <div class="time" id="time"></div>
+        <p style="margin-top:0.5rem;font-size:0.9em;color:#00ff9d;">{{ company }}</p>
+    </header>
+
     <div class="container">
-        <h1>AUTOAFFILIATE AI v7.7</h1>
-        <p style="text-align:center;font-size:1.1em;margin-bottom:20px;">{{ company }}</p>
+        <div class="card"><h3>Platforms</h3><p>X • IG • TikTok • YT</p></div>
+        <div class="card"><h3>Posts Sent</h3><p data-post-count>{{ posts_sent }}</p></div>
+        <div class="card"><h3>Referrals</h3><p data-referrals>{{ referrals }}</p></div>
+        <div class="card"><h3>Ref Earnings</h3><p data-ref-earnings>₦{{ "%.2f" % ref_earnings }}</p></div>
+        <div class="card"><h3>Total Revenue</h3><p data-revenue>₦{{ "%.2f" % revenue }}</p></div>
 
-        <div class="stat-grid">
-            <div class="stat-card"><h3>PLATFORMS</h3><p>X • IG • TikTok • YT</p></div>
-            <div class="stat-card"><h3>POSTS SENT</h3><p data-post-count>{{ posts_sent }}</p></div>
-            <div class="stat-card"><h3>REFERRALS</h3><p data-referrals>{{ referrals }}</p></div>
-            <div class="stat-card"><h3>REF EARNINGS</h3><p data-ref-earnings>₦{{ "%.2f" % ref_earnings }}</p></div>
-            <div class="stat-card"><h3>TOTAL REVENUE</h3><p data-revenue>₦{{ "%.2f" % revenue }}</p></div>
+        <div class="beast-btn">
+            <button onclick="activateBeast()">LAUNCH BEAST</button>
         </div>
 
-        <div class="btn-grid">
-            <a href="/miniapp" class="btn btn-green">Share Referral Link</a>
-            <div class="btn btn-red" onclick="initiatePayout()">WITHDRAW ₦{{ "%.2f" % revenue }}</div>
+        <div class="terminal" id="terminal">
+            > System online. Awaiting BEAST command...
         </div>
 
-        <div style="text-align:center;">
-            <div class="btn btn-red" onclick="launchBeast()" style="display:inline-block;font-size:1.8em;padding:25px 50px;">
-                LUNCH BEAST
-            </div>
-        </div>
-
-        <div class="nav-links">
+        <div class="nav">
             <a href="/miniapp" target="_blank">Telegram Mini App</a>
             <a href="/youtube_auth">YouTube Shorts</a>
             <a href="/logout">Logout</a>
         </div>
-
-        <div class="terminal" id="terminal">
-            > System idle... Awaiting BEAST activation...
-        </div>
     </div>
 
     <script>
-        function launchBeast() {
-            const t = document.getElementById('terminal');
-            t.innerHTML += "<br>> Initializing LUCK BEAST...<br>> Queueing 500 Shorts...<br>> HeyGen + YouTube ACTIVE<br>> $1M MODE ENGAGED";
-            fetch('/beast_campaign').then(r => r.json()).then(d => t.innerHTML += `<br>> ${d.status}`);
-        }
+        // === ADVANCED WEBGL SHADER SETUP ===
+        const canvas = document.getElementById('shader-canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) { document.body.innerHTML = '<h1 style="color:red;text-align:center;padding:50px;">WebGL NOT SUPPORTED</h1>'; }
 
-        function initiatePayout() {
-            const amount = prompt("Amount (₦):", "{{ "%.2f" % revenue }}");
-            const bank = prompt("Paystack Recipient Code:");
-            if (amount && bank) {
-                fetch('/payout', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({amount: parseFloat(amount), bank_account: bank})})
-                    .then(r => r.json()).then(d => alert(d.status || d.error));
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Vertex Shader
+        const vsSource = `
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
             }
+        `;
+
+        // ADVANCED FRAGMENT SHADER — MULTI-LAYER PLASMA + VORTEX + SCANLINES
+        const fsSource = `
+            precision highp float;
+            uniform float u_time;
+            uniform vec2 u_resolution;
+            uniform vec2 u_mouse;
+
+            // Noise function
+            float hash(vec2 p) {
+                return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+            }
+            float noise(vec2 p) {
+                vec2 i = floor(p);
+                vec2 f = fract(p);
+                f = f * f * (3.0 - 2.0 * f);
+                return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+                           mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y);
+            }
+
+            // FBM
+            float fbm(vec2 p) {
+                float value = 0.0;
+                float amplitude = 0.5;
+                for (int i = 0; i < 5; i++) {
+                    value += amplitude * noise(p);
+                    p *= 2.0;
+                    amplitude *= 0.5;
+                }
+                return value;
+            }
+
+            void main() {
+                vec2 uv = gl_FragCoord.xy / u_resolution.xy;
+                vec2 mouse = u_mouse / u_resolution.xy;
+                vec2 center = vec2(0.5);
+                float t = u_time * 0.4;
+
+                // === LAYER 1: PLASMA FLOW ===
+                float plasma = sin(uv.x * 8.0 + t) * sin(uv.y * 8.0 + t * 1.3) * 0.5 + 0.5;
+                plasma += sin((uv.x - uv.y) * 12.0 - t * 2.0) * 0.3;
+                plasma = pow(plasma, 2.0);
+
+                // === LAYER 2: VORTEX FIELD ===
+                vec2 toMouse = mouse - uv;
+                float dist = length(toMouse);
+                float angle = atan(toMouse.y, toMouse.x);
+                float vortex = sin(angle * 8.0 - t * 3.0 + dist * 20.0) / (dist * 10.0 + 1.0);
+                vortex = pow(abs(vortex), 1.5) * 2.0;
+
+                // === LAYER 3: HOLOGRAPHIC SCANLINES ===
+                float scanlines = sin(uv.y * u_resolution.y * 1.5) * 0.05 + 0.95;
+                float glitch = step(0.99, hash(vec2(t * 10.0, uv.y))) * 0.3;
+
+                // === LAYER 4: NEON PULSE CORE ===
+                float core = pow(1.0 - dist, 4.0) * (sin(t * 5.0) * 0.3 + 0.7);
+
+                // === LAYER 5: FBM NOISE TEXTURE ===
+                float fbmNoise = fbm(uv * 3.0 + t * 0.5) * 0.4;
+                float metal = pow(fbm(uv * 50.0 + t * 2.0), 3.0) * 0.3;
+
+                // === COLOR PALETTE ===
+                vec3 col = vec3(0.0);
+                col += vec3(0.0, 0.7, 1.0) * plasma * 3.0;           // Cyan plasma
+                col += vec3(0.0, 1.0, 0.7) * vortex * 2.5;           // Green vortex
+                col += vec3(1.0, 0.3, 0.8) * core * 2.0;             // Magenta core
+                col += vec3(0.2, 0.2, 0.3) * metal;                  // Metal reflection
+                col *= scanlines;
+                col += vec3(0.1, 0.0, 0.2) * glitch;                // Glitch accent
+
+                // === FINAL OUTPUT ===
+                gl_FragColor = vec4(col, 1.0);
+            }
+        `;
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
         }
 
-        // LIVE STATS AUTO-REFRESH
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+            console.error('Program link error:', gl.getProgramInfoLog(program));
+        }
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [-1, -1, 1, -1, -1, 1, 1, 1];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const positionLocation = gl.getAttribLocation(program, "a_position");
+        const timeLocation = gl.getUniformLocation(program, "u_time");
+        const resolutionLocation = gl.getUniformLocation(program, "u_resolution");
+        const mouseLocation = gl.getUniformLocation(program, "u_mouse");
+
+        let mouseX = 0, mouseY = 0;
+        window.addEventListener('mousemove', (e) => {
+            mouseX = e.clientX;
+            mouseY = e.clientY;
+        });
+
+        function render(now) {
+            now *= 0.001;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            gl.useProgram(program);
+            gl.enableVertexAttribArray(positionLocation);
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+            gl.uniform1f(timeLocation, now);
+            gl.uniform2f(resolutionLocation, gl.canvas.width, gl.canvas.height);
+            gl.uniform2f(mouseLocation, mouseX, mouseY);
+
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            requestAnimationFrame(render);
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        requestAnimationFrame(render);
+
+        // === LIVE TIME ===
+        function updateTime() {
+            const now = new Date();
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const date = now.toLocaleDateString('en-GB');
+            document.getElementById('time').textContent = `${date} | ${time}`;
+        }
+        updateTime();
+        setInterval(updateTime, 1000);
+
+        // === ACTIVATE BEAST ===
+        function activateBeast() {
+            const terminal = document.getElementById('terminal');
+            terminal.innerHTML = `
+                > <span style="color:#ff0055;">BEAST SYSTEM INITIALIZING...</span><br>
+                > Quantum AI Core: <span style="color:#00ff9d;">ONLINE</span><br>
+                > 500 Shorts Deploying...<br>
+                > YouTube + TikTok: <span style="color:#00d4ff;">ACTIVE</span><br>
+                > $1M/MONTH MODE: <span style="color:#ff3300;">ENGAGED</span><br>
+                > <span style="color:#ff0055; font-weight:bold; font-size:1.1em;">BEAST IS NOW LIVE</span>
+            `;
+            fetch('/beast_campaign')
+                .then(r => r.json())
+                .then(d => {
+                    terminal.innerHTML += `<br>> ${d.status}`;
+                });
+        }
+
+        // === LIVE STATS ===
         function refreshStats() {
             fetch('/api/stats').then(r => r.json()).then(data => {
                 document.querySelector('[data-post-count]').textContent = data.posts_sent;
