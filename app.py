@@ -1,4 +1,4 @@
-# app.py - v10.2 $10M EMPIRE | v7.7 + v9.4 SECURITY + LOGIN ALWAYS VISIBLE + WHATSAPP ALERTS
+# app.py - v10.3 $10M EMPIRE | FIXED LOGIN + DASHBOARD + WHATSAPP + SECURITY
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -29,7 +29,7 @@ r = redis.from_url(REDIS_URL)
 queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# === SECURITY CONFIG (v9.4) ===
+# === SECURITY CONFIG ===
 ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')
 ALLOWED_IP = os.getenv('ALLOWED_IP')
 ADMIN_PASS = os.getenv('ADMIN_PASS')
@@ -45,14 +45,17 @@ MAX_ATTEMPTS = 10
 
 # === FLASK-LOGIN ===
 class User(UserMixin):
-    def __init__(self, id): self.id = id
+    def __init__(self, id, email):
+        self.id = id
+        self.email = email  # ← FIXED: Add email to User
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 @login_manager.user_loader
-def load_user(user_id): return User(user_id)
+def load_user(user_id):
+    return User(user_id, ALLOWED_EMAIL)  # ← FIXED: Pass email
 
 # === TWILIO CLIENT ===
 client = Client(TWILIO_SID, TWILIO_TOKEN) if TWILIO_SID and TWILIO_TOKEN else None
@@ -72,7 +75,7 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === ACCESS CHECK (FOR DASHBOARD & POST) ===
+# === ACCESS CHECK (FOR DASHBOARD) ===
 def check_access():
     client_ip = request.remote_addr
     now = datetime.now()
@@ -114,26 +117,32 @@ def robots():
 # === PUBLIC PAGES (COMING SOON) ===
 @app.route('/')
 def index():
+    if check_access():
+        return redirect(url_for('login'))
     return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
 
 @app.route('/privacy')
 def privacy():
+    if check_access():
+        return render_template('privacy.html', company=COMPANY, title="Privacy Policy")
     return render_template('coming_soon.html')
 
 @app.route('/terms')
 def terms():
+    if check_access():
+        return render_template('terms.html', company=COMPANY, title="Terms of Service")
     return render_template('coming_soon.html')
 
-# === LOGIN — ALWAYS VISIBLE, ONLY YOUR IP CAN ENTER ===
+# === LOGIN — ALWAYS VISIBLE ===
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     client_ip = request.remote_addr
 
-    # === SHOW LOGIN FORM TO EVERYONE ===
+    # === SHOW LOGIN TO EVERYONE ===
     if request.method == 'GET':
         return render_template('login.html', company=COMPANY, title="Private Login")
 
-    # === POST: BLOCK WRONG IP ===
+    # === POST: CHECK IP FOR SUBMIT ===
     if client_ip != ALLOWED_IP:
         send_alert("BLOCKED LOGIN ATTEMPT", f"Wrong IP: {client_ip}")
         flash("Access Denied: Invalid IP")
@@ -148,7 +157,8 @@ def login():
 
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
         if client_ip in failed_logins: del failed_logins[client_ip]
-        login_user(User(email))
+        user = User(email, ALLOWED_EMAIL)
+        login_user(user)
         send_alert("BEAST MODE ON", f"Dashboard accessed\nIP: {client_ip}")
         return redirect(url_for('dashboard'))
     else:
@@ -180,15 +190,6 @@ def dashboard():
         return render_template('coming_soon.html')
     
     user_id = session.get('user_id')
-    if not user_id:
-        conn, cur = get_db()
-        cur.execute("SELECT id FROM users WHERE email = %s", (ALLOWED_EMAIL,))
-        user = cur.fetchone()
-        conn.close()
-        if user:
-            user_id = user['id']
-            session['user_id'] = user_id
-
     try:
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
@@ -296,7 +297,7 @@ def beast_campaign():
     if not check_access():
         return render_template('coming_soon.html')
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v10.2 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v10.3 $10M BEAST MODE MODE ACTIVATED', 'job_id': job.id})
 
 # === YOUTUBE AUTH ===
 @app.route('/youtube_auth')
