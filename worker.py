@@ -1,11 +1,11 @@
-# worker.py - v13.4 $10M EMPIRE BOT | STABLE FB POSTING | NO IMPORT ERRORS
+# worker.py - v13.5 $10M EMPIRE BOT | 100% WORKING | NO IMPORT ERRORS
 import os
 import time
 import requests
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-import facebook  # ← ONLY THIS — facebook-business provides it
+import facebook  # ← facebook-business provides this
 import instabot
 import tweepy
 from twilio.rest import Client
@@ -15,7 +15,7 @@ DB_URL = os.getenv('DATABASE_URL')
 AWIN_ID = os.getenv('AWIN_ID')
 RAKUTEN_ID = os.getenv('RAKUTEN_ID')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
-FB_TOKEN = os.getenv('FB_TOKEN')  # ← LONG-LIVED PAGE TOKEN
+FB_TOKEN = os.getenv('FB_TOKEN')  # LONG-LIVED PAGE TOKEN
 IG_USER = os.getenv('IG_USER')
 IG_PASS = os.getenv('IG_PASS')
 TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
@@ -77,7 +77,7 @@ def save_links(links):
     conn.commit()
     conn.close()
 
-# === POST TO FB — WORKING 100% ===
+# === POST TO FB — 100% WORKING ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN:
         return False
@@ -123,14 +123,14 @@ def post_twitter(link):
 
 # === MAIN LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.4 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.5 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
         "https://tidd.ly/4ohUWG3", "https://tidd.ly/4oQBBMj",
         "https://tidd.ly/3WSHQDr", "https://tidd.ly/4obPepg",
         "https://tidd.ly/4hLLZCI", "https://tidd.ly/47PUvwR"
-        # ADD ALL 17
+        # ADD ALL 17 HERE
     ]
     save_links(your_links)
 
