@@ -1,11 +1,12 @@
-# worker.py - v13.2 $10M EMPIRE BOT | FB/IG/TWITTER + AWIN/RAKUTEN + 24 POSTS/DAY
+# worker.py - v13.3 $10M EMPIRE BOT | NO IMPORT ERRORS | FB/IG/TWITTER + 24 POSTS/DAY
 import os
 import time
 import requests
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-import facebook  # ← CORRECT: facebook-business uses 'facebook' namespace
+from facebook_business.api import FacebookAdsApi  # ← CORRECT
+from facebook_business.ad_objects.page import Page  # ← CORRECT
 import instabot
 import tweepy
 from twilio.rest import Client
@@ -77,12 +78,16 @@ def save_links(links):
     conn.commit()
     conn.close()
 
-# === POST TO FB (CORRECTED) ===
+# === POST TO FB (CORRECT SDK USAGE) ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN: return False
     try:
-        graph = facebook.GraphAPI(FB_TOKEN)
-        graph.put_object(parent_object=FB_PAGE_ID, connection_name='feed', message=f"Check this deal! {link}")
+        FacebookAdsApi.init(access_token=FB_TOKEN)
+        page = Page(FB_PAGE_ID)
+        page.create_feed(
+            fields=[],
+            params={'message': f"Check this deal! {link}"}
+        )
         return True
     except Exception as e:
         print(f"FB ERROR: {e}")
@@ -118,14 +123,13 @@ def post_twitter(link):
 
 # === MAIN BOT LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.2 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.3 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
         "https://tidd.ly/4ohUWG3", "https://tidd.ly/4oQBBMj",
         "https://tidd.ly/3WSHQDr", "https://tidd.ly/4obPepg",
         "https://tidd.ly/4hLLZCI", "https://tidd.ly/47PUvwR"
-        # ADD ALL 17
     ]
     save_links(your_links)
 
