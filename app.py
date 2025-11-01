@@ -1,4 +1,4 @@
-# app.py - v10.0 $10M EMPIRE | v7.7 + v9.4 SECURITY + WHATSAPP ALERTS + FORT KNOX
+# app.py - v10.1 $10M EMPIRE | v7.7 + v9.4 SECURITY + WHATSAPP ALERTS + FIXED INDENT
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -30,13 +30,13 @@ queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # === SECURITY CONFIG (v9.4) ===
-ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')      # ← SET IN RENDER
-ALLOWED_IP = os.getenv('ALLOWED_IP')            # ← YOUR IP
-ADMIN_PASS = os.getenv('ADMIN_PASS')            # ← YOUR PASSWORD
+ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')
+ALLOWED_IP = os.getenv('ALLOWED_IP')
+ADMIN_PASS = os.getenv('ADMIN_PASS')
 
 TWILIO_SID = os.getenv('TWILIO_SID')
 TWILIO_TOKEN = os.getenv('TWILIO_TOKEN')
-YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')      # whatsapp:+234...
+YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')
 
 # === LOGIN TRACKING ===
 failed_logins = {}
@@ -72,26 +72,19 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === ACCESS CHECK (IP + LOCK) ===
+# === ACCESS CHECK ===
 def check_access():
     client_ip = request.remote_addr
     now = datetime.now()
-
-    # Clean expired locks
     for ip in list(failed_logins):
         if failed_logins[ip]['locked_until'] < now:
             del failed_logins[ip]
-
-    # Check lock
     if client_ip in failed_logins and failed_logins[client_ip]['locked_until'] > now:
         mins = int((failed_logins[client_ip]['locked_until'] - now).total_seconds() // 60)
         flash(f"Locked out. Try again in {mins} minutes.")
         return False
-
-    # IP Whitelist
     if client_ip != ALLOWED_IP:
         return False
-
     return True
 
 # === CACHE & SECURITY HEADERS ===
@@ -118,7 +111,7 @@ def sitemap():
 def robots():
     return send_from_directory('.', 'robots.txt')
 
-# === PUBLIC PAGES (COMING SOON FOR ALL BUT YOU) ===
+# === PUBLIC PAGES (COMING SOON) ===
 @app.route('/')
 def index():
     if check_access():
@@ -137,7 +130,7 @@ def terms():
         return render_template('terms.html', company=COMPANY, title="Terms of Service")
     return render_template('coming_soon.html')
 
-# === LOGIN (ONLY YOU) ===
+# === LOGIN ===
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if not check_access():
@@ -179,7 +172,7 @@ def logout():
     logout_user()
     return redirect(url_for('index'))
 
-# === DASHBOARD (ONLY YOU) ===
+# === DASHBOARD ===
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -188,7 +181,6 @@ def dashboard():
     
     user_id = session.get('user_id')
     if not user_id:
-        # Fallback: get from DB
         conn, cur = get_db()
         cur.execute("SELECT id FROM users WHERE email = %s", (ALLOWED_EMAIL,))
         user = cur.fetchone()
@@ -223,65 +215,190 @@ def dashboard():
                          company=COMPANY,
                          title="Dashboard | $10M Empire")
 
-# === ALL OTHER ROUTES (EXISTING) ===
+# === LIVE STATS API ===
 @app.route('/api/stats')
+@login_required
 def api_stats():
     if current_user.id != ALLOWED_EMAIL:
         return jsonify({'error': 'Unauthorized'}), 401
-    # ... [same as before]
-    # (Keep your existing code)
+    
+    user_id = session.get('user_id')
+    try:
+        conn, cur = get_db()
+        cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
+        posts_sent = cur.fetchone()['post_count'] or 0
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
+        revenue = cur.fetchone()['total_revenue'] or 0
+        cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
+        referrals = cur.fetchone()['ref_count'] or 0
+        cur.execute("SELECT COALESCE(SUM(reward), 0) as ref_earnings FROM referrals WHERE referrer_id = %s", (user_id,))
+        ref_earnings = cur.fetchone()['ref_earnings'] or 0
+        conn.close()
+        return jsonify({
+            'posts_sent': posts_sent,
+            'revenue': float(revenue),
+            'referrals': referrals,
+            'ref_earnings': float(ref_earnings)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
+# === AUTO-PAYOUT ===
 @app.route('/payout', methods=['POST'])
 @login_required
 def payout():
     if current_user.id != ALLOWED_EMAIL:
         return jsonify({'error': 'Unauthorized'}), 401
-    # ... [same as before]
+    
+    user_id = session.get('user_id')
+    amount = request.json.get('amount', 0)
+    bank_account = request.json.get('bank_account')
+    if amount <= 0 or not bank_account:
+        return jsonify({'error': 'Invalid amount or bank'}), 400
+    
+    conn, cur = get_db()
+    cur.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+    user = cur.fetchone()
+    if not user or user['balance'] < amount:
+        conn.close()
+        return jsonify({'error': 'Insufficient balance'}), 400
+    
+    paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
+    headers = {'Authorization': f'Bearer {paystack_secret}'}
+    payout_data = {
+        'source': 'balance',
+        'amount': int(amount * 100),
+        'recipient': bank_account,
+        'reason': 'Affiliate earnings'
+    }
+    r = requests.post('https://api.paystack.co/transfer', headers=headers, json=payout_data, timeout=10)
+    
+    if r.status_code == 200:
+        cur.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (amount, user_id))
+        cur.execute("INSERT INTO earnings (user_id, amount, source, created_at) VALUES (%s, %s, %s, %s)", 
+                    (user_id, -amount, 'payout', datetime.utcnow()))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': f'₦{amount} paid out!'})
+    else:
+        conn.close()
+        return jsonify({'error': f'Payout failed: {r.text}'}), 500
 
+# === HEALTH ===
 @app.route('/health')
 def health():
     return 'OK', 200
 
+# === BEAST CAMPAIGN ===
 @app.route('/beast_campaign')
 @login_required
 def beast_campaign():
     if current_user.id != ALLOWED_EMAIL:
         return render_template('coming_soon.html')
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v10.0 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v10.1 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
 
+# === YOUTUBE AUTH ===
 @app.route('/youtube_auth')
 @login_required
 def youtube_auth():
     if current_user.id != ALLOWED_EMAIL:
         return render_template('coming_soon.html')
-    # ... [same as before]
+    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
+    if not secrets_json:
+        return "<h1 style='color:red'>ERROR: GOOGLE_CLIENT_SECRETS missing</h1>"
 
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(secrets_json)
+        temp_path = f.name
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            temp_path,
+            scopes=['https://www.googleapis.com/auth/youtube.upload'],
+            redirect_uri=f"https://{request.host}/youtube_callback"
+        )
+        auth_url, _ = flow.authorization_url(prompt='consent')
+        os.unlink(temp_path)
+        return f'''
+        <div style="background:#000;color:#0f0;font-family:Orbitron;text-align:center;padding:50px;">
+            <h1>CONNECT YOUTUBE</h1>
+            <a href="{auth_url}" target="_blank">
+                <button style="padding:18px 40px;background:#f00;color:#fff;border:none;font-size:1.3em;cursor:pointer;border-radius:10px;">
+                    AUTHORIZE NOW
+                </button>
+            </a>
+        </div>
+        '''
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return f"<h1 style='color:red'>Setup Failed: {str(e)}</h1>"
+
+# === YOUTUBE CALLBACK ===
 @app.route('/youtube_callback')
 def youtube_callback():
-    # ... [same as before]
+    code = request.args.get('code')
+    if not code:
+        return "<h1 style='color:red'>Auth Denied</h1>"
 
+    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        f.write(secrets_json)
+        temp_path = f.name
+
+    try:
+        flow = InstalledAppFlow.from_client_secrets_file(
+            temp_path,
+            scopes=['https://www.googleapis.com/auth/youtube.upload'],
+            redirect_uri=f"https://{request.host}/youtube_callback"
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        with open('youtube_token.json', 'w') as f:
+            f.write(creds.to_json())
+        os.unlink(temp_path)
+        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Auto-Upload ACTIVE</h1>"
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
+
+# === MINI APP ===
 @app.route('/miniapp')
 def miniapp():
     if check_access():
         return render_template('miniapp.html', company=COMPANY, title="Referral Mini App")
     return render_template('coming_soon.html')
 
+# === UPSELL ===
 @app.route('/upsell', methods=['POST'])
 def upsell():
-    # ... [same as before]
+    email = request.json.get('email')
+    if not email:
+        return jsonify({'error': 'Email required'}), 400
+    mailchimp_key = os.getenv('MAILCHIMP_API_KEY')
+    list_id = os.getenv('MAILCHIMP_LIST_ID')
+    if not mailchimp_key or not list_id:
+        return jsonify({'error': 'Mailchimp not configured'}), 500
+    url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
+    headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
+    payload = {"email_address": email, "status": "subscribed", "tags": ["affiliate", "beast-mode"]}
+    response = requests.post(url, headers=headers, json=payload, timeout=10)
+    if response.status_code == 200:
+        return jsonify({'status': 'VIP Upsell Email Sent!'})
+    return jsonify({'error': 'Email failed: ' + response.text}), 500
 
+# === 404 ===
 @app.errorhandler(404)
 def not_found(e):
     if check_access():
         return render_template('404.html', company=COMPANY, title="404"), 404
     return render_template('coming_soon.html'), 404
 
-# === CATCH-ALL FOR ANY OTHER ROUTE ===
+# === CATCH-ALL ===
 @app.route('/<path:path>')
 def catch_all(path):
-    if check_access() and path in ['privacy', 'terms', 'miniapp']:
-        return redirect(url_for(path))
     return render_template('coming_soon.html')
 
 # === RUN ===
