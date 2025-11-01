@@ -1,5 +1,6 @@
-# worker.py - v12.1 AUTO-DEEPLINK PULLER + X, IG, FB, TIKTOK, YOUTUBE — $10M ON
+# worker.py - v12.1.1 — AUTO-DEEPLINK PULLER + 24 POSTS/DAY + $10M EMPIRE
 import os
+import sys          # ← FIXED: Added sys
 import time
 import json
 import requests
@@ -12,7 +13,7 @@ def log(msg):
     print(f"[MONEY] {datetime.now().strftime('%H:%M:%S')} | {msg}")
     sys.stdout.flush()
 
-log("SLICKOFFICIALS v12.1 — AUTO-DEEPLINK PULLER STARTED")
+log("SLICKOFFICIALS v12.1.1 — AUTO-DEEPLINK PULLER + 24 POSTS/DAY STARTED")
 
 # === IMPORTS ===
 try:
@@ -48,7 +49,7 @@ def pull_deeplink():
             headers = {"Authorization": f"Bearer {awin_token}"}
             r = requests.get(url, headers=headers, timeout=30)
             if r.status_code == 200:
-                lines = r.text.splitlines()[1:10]  # First 10 lines
+                lines = r.text.splitlines()[1:10]
                 for line in lines:
                     cols = line.split('|')
                     if len(cols) >= 6:
@@ -67,7 +68,7 @@ def pull_deeplink():
             r = requests.get(url, timeout=30)
             if r.status_code == 200:
                 data = r.json()
-                if data['products']:
+                if data.get('products'):
                     product = data['products'][0]['name']
                     deeplink = data['products'][0]['link']
                     log(f"RAKUTEN LINK: {product} → {deeplink}")
@@ -75,7 +76,7 @@ def pull_deeplink():
         except Exception as e:
             log(f"RAKUTEN ERROR: {e}")
 
-    # === FALLBACK (Your 11 Links) ===
+    # === FALLBACK: YOUR 11 LINKS (GUARANTEED) ===
     your_links = [
         ("Kila Custom Insoles", "https://tidd.ly/3J1KeV2", "awin"),
         ("Kapitalwise", "https://tidd.ly/43ibfu7", "awin"),
@@ -93,27 +94,25 @@ def pull_deeplink():
     log(f"FALLBACK LINK: {product} → {deeplink} ({network})")
     return product, deeplink, network
 
-# === MAIN LOOP ===
+# === MAIN LOOP — 24 POSTS/DAY ===
 while True:
-    log("RUN STARTED — AUTO DEEPLINK PULL + POSTING")
+    log("RUN STARTED — AUTO DEEPLINK + POSTING")
 
-    # === PULL DEEPLINK ===
     product, deeplink, network = pull_deeplink()
 
-    # === AI CONTENT WITH LINK ===
     content = f"70% OFF {product}! Shop now: {deeplink} #ad"
     if openai_client:
         try:
             resp = openai_client.chat.completions.create(
                 model="gpt-3.5-turbo",
-                messages=[{"role": "user", "content": f"Viral post for {product}. Include this exact link: {deeplink}. Max 280 chars. End with #ad"}],
+                messages=[{"role": "user", "content": f"Viral post for {product}. Include EXACT link: {deeplink}. Max 280. End with #ad"}],
                 max_tokens=100
             )
             content = resp.choices[0].message.content.strip()
             if deeplink not in content:
                 content = f"{content.split('#ad')[0].strip()} {deeplink} #ad"
             content = content[:280]
-            log("AI LINK CONTENT GENERATED")
+            log("AI CONTENT GENERATED")
         except Exception as e:
             log(f"OPENAI ERROR: {e}")
     log(f"POST: {content}")
@@ -138,11 +137,7 @@ while True:
         try:
             r = requests.post(
                 f"https://graph.facebook.com/v20.0/{required['IG_USER_ID']}/media",
-                params={
-                    'image_url': img,
-                    'caption': content,
-                    'access_token': required['FB_ACCESS_TOKEN']
-                },
+                params={'image_url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']},
                 timeout=30
             )
             if r.status_code == 200:
@@ -162,11 +157,7 @@ while True:
         try:
             r = requests.post(
                 f"https://graph.facebook.com/v20.0/{required['FB_PAGE_ID']}/photos",
-                params={
-                    'url': img,
-                    'caption': content,
-                    'access_token': required['FB_ACCESS_TOKEN']
-                },
+                params={'url': img, 'caption': content, 'access_token': required['FB_ACCESS_TOKEN']},
                 timeout=30
             )
             if r.status_code == 200:
