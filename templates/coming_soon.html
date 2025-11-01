@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Coming Soon | AutoAffiliate AI</title>
+  <style>
+    :root {
+      --bg-dark: radial-gradient(circle at 50% 30%, #0f0f0f, #1a1a1a 80%);
+      --bg-light: radial-gradient(circle at 50% 30%, #f0f0f0, #d6d6d6 80%);
+      --text-dark: #f2f2f2;
+      --text-light: #111;
+      --accent: #00b4d8;
+    }
+
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-dark);
+      transition: all 0.4s ease;
+    }
+
+    body.light-mode {
+      background: var(--bg-light);
+      color: var(--text-light);
+    }
+
+    h1 {
+      font-size: 3em;
+      letter-spacing: 1px;
+      text-shadow: 0 0 20px rgba(0, 180, 216, 0.4);
+      margin-bottom: 10px;
+    }
+
+    p {
+      font-size: 1.1em;
+      opacity: 0.9;
+      margin-bottom: 30px;
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 50%;
+      width: 42px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--accent);
+      transition: 0.3s;
+    }
+
+    body.light-mode .theme-toggle {
+      background: rgba(255,255,255,0.5);
+      color: #111;
+    }
+
+    .theme-toggle:hover {
+      transform: scale(1.1);
+    }
+
+    .countdown {
+      display: flex;
+      gap: 20px;
+      font-size: 1.2em;
+      color: var(--accent);
+    }
+
+    .countdown div {
+      text-align: center;
+    }
+
+    .contact {
+      position: absolute;
+      bottom: 20px;
+      font-size: 0.9em;
+    }
+
+    .contact a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle">☀️</button>
+  <h1>🚀 AutoAffiliate AI</h1>
+  <p>We’re working hard behind the scenes. Launching soon!</p>
+  <div class="countdown" id="countdown">
+    <div><span id="days">00</span><br>Days</div>
+    <div><span id="hours">00</span><br>Hours</div>
+    <div><span id="minutes">00</span><br>Minutes</div>
+    <div><span id="seconds">00</span><br>Seconds</div>
+  </div>
+
+  <div class="contact">
+    Contact us: <a href="mailto:support@slickofficials.com">support@slickofficials.com</a>
+  </div>
+
+  <script>
+    const toggle = document.getElementById("themeToggle");
+    toggle.addEventListener("click", () => {
+      document.body.classList.toggle("light-mode");
+      toggle.textContent = document.body.classList.contains("light-mode") ? "🌙" : "☀️";
+    });
+
+    // Countdown timer
+    const target = new Date("Dec 25, 2025 00:00:00").getTime();
+    const timer = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = target - now;
+
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      document.getElementById("days").textContent = days.toString().padStart(2, "0");
+      document.getElementById("hours").textContent = hours.toString().padStart(2, "0");
+      document.getElementById("minutes").textContent = minutes.toString().padStart(2, "0");
+      document.getElementById("seconds").textContent = seconds.toString().padStart(2, "0");
+
+      if (distance < 0) {
+        clearInterval(timer);
+        document.getElementById("countdown").innerHTML = "We're live! 🚀";
+      }
+    }, 1000);
+  </script>
+</body>
+</html>
