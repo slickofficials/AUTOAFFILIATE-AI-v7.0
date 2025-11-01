@@ -1,13 +1,11 @@
-# worker.py - v13.1 $10M EMPIRE BOT | AWIN + RAKUTEN + FB/IG/TWITTER + 24 POSTS/DAY
+# worker.py - v13.2 $10M EMPIRE BOT | FB/IG/TWITTER + AWIN/RAKUTEN + 24 POSTS/DAY
 import os
 import time
 import requests
-import random
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-from facebook_business.ad_objects.page import Page  # ← FIXED: facebook-business
-from facebook_business.api import FacebookAdsApi
+import facebook  # ← CORRECT: facebook-business uses 'facebook' namespace
 import instabot
 import tweepy
 from twilio.rest import Client
@@ -79,22 +77,18 @@ def save_links(links):
     conn.commit()
     conn.close()
 
-# === POST TO FB (FIXED) ===
+# === POST TO FB (CORRECTED) ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN: return False
     try:
-        FacebookAdsApi.init(access_token=FB_TOKEN)
-        page = Page(FB_PAGE_ID)
-        page.create_feed(
-            fields=[],
-            params={'message': f"Check this deal! {link}"}
-        )
+        graph = facebook.GraphAPI(FB_TOKEN)
+        graph.put_object(parent_object=FB_PAGE_ID, connection_name='feed', message=f"Check this deal! {link}")
         return True
     except Exception as e:
         print(f"FB ERROR: {e}")
         return False
 
-# === POST TO IG (FIXED) ===
+# === POST TO IG ===
 def post_ig(link):
     if not IG_USER or not IG_PASS: return False
     try:
@@ -124,7 +118,7 @@ def post_twitter(link):
 
 # === MAIN BOT LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.1 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.2 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
@@ -167,7 +161,7 @@ def run_daily_campaign():
         if success:
             send_alert("POSTED", f"Deal live: {link[:50]}...")
         
-        time.sleep(3600)  # 1 HOUR
+        time.sleep(3600)  # 1 HOUR = 24 POSTS/DAY
 
 if __name__ == '__main__':
     run_daily_campaign()
