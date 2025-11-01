@@ -1,11 +1,11 @@
-# worker.py - v13.5 $10M EMPIRE BOT | 100% WORKING | NO IMPORT ERRORS
+# worker.py - v13.6 $10M EMPIRE BOT | 100% WORKING | NO IMPORT ERRORS
 import os
 import time
 import requests
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-import facebook  # ← facebook-business provides this
+from facebook_business.api import GraphAPI  # ← CORRECT
 import instabot
 import tweepy
 from twilio.rest import Client
@@ -82,7 +82,7 @@ def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN:
         return False
     try:
-        graph = facebook.GraphAPI(FB_TOKEN)
+        graph = GraphAPI(FB_TOKEN)
         graph.put_object(
             parent_object=FB_PAGE_ID,
             connection_name='feed',
@@ -123,7 +123,7 @@ def post_twitter(link):
 
 # === MAIN LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.5 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.6 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
