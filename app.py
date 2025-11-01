@@ -1,4 +1,4 @@
-# app.py - v14.0 $10M EMPIRE | FINAL LOGIN FLOW + DASHBOARD + PRIVACY + WHATSAPP
+# app.py - v14.1 $10M EMPIRE | DASHBOARD AFTER LOGIN | REAL IP FROM X-Forwarded-For
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -7,12 +7,7 @@ import redis
 import rq
 import psycopg
 from psycopg.rows import dict_row
-import bcrypt
 import openai
-import json
-import tempfile
-from google_auth_oauthlib.flow import InstalledAppFlow
-import requests
 from datetime import datetime, timedelta
 from twilio.rest import Client
 
@@ -32,7 +27,7 @@ openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # === SECURITY CONFIG ===
 ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')
-ALLOWED_IP = os.getenv('ALLOWED_IP')
+ALLOWED_IP = os.getenv('ALLOWED_IP')  # e.g., 102.88.34.12
 ADMIN_PASS = os.getenv('ADMIN_PASS')
 
 TWILIO_SID = os.getenv('TWILIO_SID')
@@ -47,7 +42,7 @@ MAX_ATTEMPTS = 10
 # === FLASK-LOGIN ===
 class User(UserMixin):
     def __init__(self, email):
-        self.id = email  # ← Use email as ID
+        self.id = email
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -73,22 +68,32 @@ def send_alert(title, body):
             body=msg,
             to=YOUR_WHATSAPP
         )
-        print(f"[WHATSAPP] {title}")
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === ACCESS CHECK (IP + LOCKOUT) ===
+# === GET REAL CLIENT IP (X-Forwarded-For) ===
+def get_client_ip():
+    if request.headers.getlist("X-Forwarded-For"):
+        ip = request.headers.getlist("X-Forwarded-For")[0].split(',')[0].strip()
+    else:
+        ip = request.remote_addr
+    return ip
+
+# === ACCESS CHECK (USES REAL IP) ===
 def check_access():
-    client_ip = request.remote_addr
+    client_ip = get_client_ip()
     now = datetime.now()
+
     # Clear expired lockouts
     for ip in list(failed_logins):
         if failed_logins[ip]['locked_until'] < now:
             del failed_logins[ip]
+
     if client_ip in failed_logins and failed_logins[client_ip]['locked_until'] > now:
         mins = int((failed_logins[client_ip]['locked_until'] - now).total_seconds() // 60)
         flash(f"Locked out. Try again in {mins} minutes.")
         return False
+
     return client_ip == ALLOWED_IP
 
 # === CACHE & SECURITY HEADERS ===
@@ -117,22 +122,19 @@ def robots():
 
 # === ROUTES ===
 
-# 1. ROOT → welcome.html (ONLY FOR YOU)
 @app.route('/')
 def index():
     if check_access():
         return render_template('welcome.html', company=COMPANY, title="Welcome")
     return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
 
-# 2. /coming_soon → coming_soon.html (PUBLIC)
 @app.route('/coming_soon')
 def coming_soon():
     return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
 
-# 3. /login → login.html (VISIBLE TO ALL, ONLY YOUR IP CAN SUBMIT)
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    client_ip = request.remote_addr
+    client_ip = get_client_ip()
 
     # SHOW LOGIN FORM TO EVERYONE
     if request.method == 'GET':
@@ -171,7 +173,6 @@ def login():
             flash(f"Invalid. {left} attempts left.")
         return render_template('login.html', company=COMPANY, title="Private Login")
 
-# 4. /dashboard → dashboard.html (ONLY AFTER LOGIN + IP CHECK)
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -188,6 +189,7 @@ def dashboard():
         referrals = cur.fetchone()['ref_count'] or 0
         conn.close()
     except Exception as e:
+        print(f"DB ERROR: {e}")
         posts_sent = revenue = referrals = 0
 
     return render_template('dashboard.html',
@@ -197,22 +199,19 @@ def dashboard():
                          company=COMPANY,
                          title="Dashboard | $10M Empire")
 
-# 5. /privacy → privacy.html with contact email
 @app.route('/privacy')
 def privacy():
     if check_access():
         return render_template('privacy.html', company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
     return render_template('coming_soon.html')
 
-# === LOGOUT ===
 @app.route('/logout')
 @login_required
 def logout():
-    send_alert("LOGGED OUT", "Dashboard session ended.")
+    send_alert("LOGGED OUT", "Session ended.")
     logout_user()
     return redirect(url_for('index'))
 
-# === HEALTH & BEAST MODE ===
 @app.route('/health')
 def health():
     return 'OK', 200
@@ -223,17 +222,8 @@ def beast_campaign():
     if not check_access():
         return render_template('coming_soon.html')
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v14.0 BEAST MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v14.1 BEAST MODE ACTIVATED', 'job_id': job.id})
 
-# === YOUTUBE AUTH ===
-@app.route('/youtube_auth')
-@login_required
-def youtube_auth():
-    if not check_access():
-        return render_template('coming_soon.html')
-    # ... (same as before)
-
-# === 404 & CATCH-ALL ===
 @app.errorhandler(404)
 def not_found(e):
     return render_template('coming_soon.html'), 404
