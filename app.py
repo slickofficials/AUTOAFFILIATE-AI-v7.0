@@ -1,4 +1,4 @@
-# app.py - v10.1 $10M EMPIRE | v7.7 + v9.4 SECURITY + WHATSAPP ALERTS + FIXED INDENT
+# app.py - v10.2 $10M EMPIRE | v7.7 + v9.4 SECURITY + LOGIN ALWAYS VISIBLE + WHATSAPP ALERTS
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -72,7 +72,7 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === ACCESS CHECK ===
+# === ACCESS CHECK (FOR DASHBOARD & POST) ===
 def check_access():
     client_ip = request.remote_addr
     now = datetime.now()
@@ -114,55 +114,55 @@ def robots():
 # === PUBLIC PAGES (COMING SOON) ===
 @app.route('/')
 def index():
-    if check_access():
-        return redirect(url_for('login'))
     return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
 
 @app.route('/privacy')
 def privacy():
-    if check_access():
-        return render_template('privacy.html', company=COMPANY, title="Privacy Policy")
     return render_template('coming_soon.html')
 
 @app.route('/terms')
 def terms():
-    if check_access():
-        return render_template('terms.html', company=COMPANY, title="Terms of Service")
     return render_template('coming_soon.html')
 
-# === LOGIN ===
+# === LOGIN — ALWAYS VISIBLE, ONLY YOUR IP CAN ENTER ===
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if not check_access():
-        return render_template('coming_soon.html')
-
     client_ip = request.remote_addr
 
-    if request.method == 'POST':
-        email = request.form['email'].strip().lower()
-        password = request.form['password']
+    # === SHOW LOGIN FORM TO EVERYONE ===
+    if request.method == 'GET':
+        return render_template('login.html', company=COMPANY, title="Private Login")
 
-        if client_ip not in failed_logins:
-            failed_logins[client_ip] = {'count': 0, 'locked_until': None}
+    # === POST: BLOCK WRONG IP ===
+    if client_ip != ALLOWED_IP:
+        send_alert("BLOCKED LOGIN ATTEMPT", f"Wrong IP: {client_ip}")
+        flash("Access Denied: Invalid IP")
+        return render_template('coming_soon.html')
 
-        if email == ALLOWED_EMAIL and password == ADMIN_PASS:
-            if client_ip in failed_logins: del failed_logins[client_ip]
-            login_user(User(email))
-            send_alert("BEAST MODE ON", f"Dashboard accessed\nIP: {client_ip}")
-            return redirect(url_for('dashboard'))
+    # === VALIDATE CREDENTIALS ===
+    email = request.form['email'].strip().lower()
+    password = request.form['password']
+
+    if client_ip not in failed_logins:
+        failed_logins[client_ip] = {'count': 0, 'locked_until': None}
+
+    if email == ALLOWED_EMAIL and password == ADMIN_PASS:
+        if client_ip in failed_logins: del failed_logins[client_ip]
+        login_user(User(email))
+        send_alert("BEAST MODE ON", f"Dashboard accessed\nIP: {client_ip}")
+        return redirect(url_for('dashboard'))
+    else:
+        failed_logins[client_ip]['count'] += 1
+        left = MAX_ATTEMPTS - failed_logins[client_ip]['count']
+        if failed_logins[client_ip]['count'] >= 3:
+            send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nIP: {client_ip}")
+        if left <= 0:
+            failed_logins[client_ip]['locked_until'] = datetime.now() + LOCKOUT_DURATION
+            send_alert("ACCOUNT LOCKED", f"10 failed attempts\nIP: {client_ip}")
+            flash("BANNED: 10 failed attempts. 24hr lock.")
         else:
-            failed_logins[client_ip]['count'] += 1
-            left = MAX_ATTEMPTS - failed_logins[client_ip]['count']
-            if failed_logins[client_ip]['count'] >= 3:
-                send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nIP: {client_ip}")
-            if left <= 0:
-                failed_logins[client_ip]['locked_until'] = datetime.now() + LOCKOUT_DURATION
-                send_alert("ACCOUNT LOCKED", f"10 failed attempts\nIP: {client_ip}")
-                flash("BANNED: 10 failed attempts. 24hr lock.")
-            else:
-                flash(f"Invalid. {left} attempts left.")
-
-    return render_template('login.html', company=COMPANY, title="Private Login")
+            flash(f"Invalid. {left} attempts left.")
+        return render_template('login.html', company=COMPANY, title="Private Login")
 
 # === LOGOUT ===
 @app.route('/logout')
@@ -176,7 +176,7 @@ def logout():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if current_user.id != ALLOWED_EMAIL:
+    if not check_access():
         return render_template('coming_soon.html')
     
     user_id = session.get('user_id')
@@ -219,7 +219,7 @@ def dashboard():
 @app.route('/api/stats')
 @login_required
 def api_stats():
-    if current_user.id != ALLOWED_EMAIL:
+    if not check_access():
         return jsonify({'error': 'Unauthorized'}), 401
     
     user_id = session.get('user_id')
@@ -247,7 +247,7 @@ def api_stats():
 @app.route('/payout', methods=['POST'])
 @login_required
 def payout():
-    if current_user.id != ALLOWED_EMAIL:
+    if not check_access():
         return jsonify({'error': 'Unauthorized'}), 401
     
     user_id = session.get('user_id')
@@ -293,16 +293,16 @@ def health():
 @app.route('/beast_campaign')
 @login_required
 def beast_campaign():
-    if current_user.id != ALLOWED_EMAIL:
+    if not check_access():
         return render_template('coming_soon.html')
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v10.1 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v10.2 $10M BEAST MODE ACTIVATED', 'job_id': job.id})
 
 # === YOUTUBE AUTH ===
 @app.route('/youtube_auth')
 @login_required
 def youtube_auth():
-    if current_user.id != ALLOWED_EMAIL:
+    if not check_access():
         return render_template('coming_soon.html')
     secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
     if not secrets_json:
@@ -367,33 +367,16 @@ def youtube_callback():
 # === MINI APP ===
 @app.route('/miniapp')
 def miniapp():
-    if check_access():
-        return render_template('miniapp.html', company=COMPANY, title="Referral Mini App")
     return render_template('coming_soon.html')
 
 # === UPSELL ===
 @app.route('/upsell', methods=['POST'])
 def upsell():
-    email = request.json.get('email')
-    if not email:
-        return jsonify({'error': 'Email required'}), 400
-    mailchimp_key = os.getenv('MAILCHIMP_API_KEY')
-    list_id = os.getenv('MAILCHIMP_LIST_ID')
-    if not mailchimp_key or not list_id:
-        return jsonify({'error': 'Mailchimp not configured'}), 500
-    url = f"https://us1.api.mailchimp.com/3.0/lists/{list_id}/members"
-    headers = {"Authorization": f"apikey {mailchimp_key}", "Content-Type": "application/json"}
-    payload = {"email_address": email, "status": "subscribed", "tags": ["affiliate", "beast-mode"]}
-    response = requests.post(url, headers=headers, json=payload, timeout=10)
-    if response.status_code == 200:
-        return jsonify({'status': 'VIP Upsell Email Sent!'})
-    return jsonify({'error': 'Email failed: ' + response.text}), 500
+    return render_template('coming_soon.html')
 
 # === 404 ===
 @app.errorhandler(404)
 def not_found(e):
-    if check_access():
-        return render_template('404.html', company=COMPANY, title="404"), 404
     return render_template('coming_soon.html'), 404
 
 # === CATCH-ALL ===
