@@ -1,186 +1,152 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Access | {{ company }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;900&display=swap" rel="stylesheet">
-    <style>
-        body {
-            margin: 0;
-            font-family: 'Orbitron', sans-serif;
-            background: radial-gradient(circle at 50% 30%, #0d0d0d, #000);
-            color: #00ffcc;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            overflow: hidden;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Login | AutoAffiliate AI</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
+  <style>
+    :root {
+      --bg-dark: radial-gradient(circle at 50% 30%, #1a1a1a, #0e0e0e 80%);
+      --bg-light: radial-gradient(circle at 50% 30%, #f2f2f2, #dcdcdc 80%);
+      --glass-dark: rgba(255, 255, 255, 0.08);
+      --glass-light: rgba(255, 255, 255, 0.35);
+      --text-dark: #e6e6e6;
+      --text-light: #222;
+      --accent: #00b4d8;
+    }
 
-        .login-container {
-            text-align: center;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(0, 255, 204, 0.3);
-            border-radius: 15px;
-            padding: 40px 50px;
-            box-shadow: 0 0 25px rgba(0, 255, 204, 0.2);
-            backdrop-filter: blur(12px);
-        }
+    body {
+      font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      transition: all 0.4s ease;
+    }
 
-        h1 {
-            font-size: 2.3em;
-            color: #00ffcc;
-            text-shadow: 0 0 10px #00ffcc;
-            margin-bottom: 30px;
-        }
+    body.light-mode {
+      background: var(--bg-light);
+      color: var(--text-light);
+    }
 
-        input {
-            width: 85%;
-            padding: 12px;
-            margin: 10px 0;
-            border: none;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #00ffcc;
-            font-size: 1em;
-            text-align: center;
-            outline: none;
-            box-shadow: 0 0 10px rgba(0, 255, 204, 0.2);
-        }
+    .login-box {
+      background: var(--glass-dark);
+      backdrop-filter: blur(20px);
+      border-radius: 16px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+      transition: all 0.4s ease;
+    }
 
-        input::placeholder {
-            color: #00ffcc80;
-        }
+    body.light-mode .login-box {
+      background: var(--glass-light);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    }
 
-        button {
-            width: 90%;
-            padding: 12px;
-            margin-top: 20px;
-            font-family: 'Orbitron', sans-serif;
-            background: linear-gradient(135deg, #00ffcc, #007bff);
-            color: #000;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 700;
-            letter-spacing: 2px;
-            transition: 0.3s ease;
-            box-shadow: 0 0 20px rgba(0, 255, 204, 0.5);
-        }
+    h2 {
+      text-align: center;
+      margin-bottom: 1.5rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
 
-        button:hover {
-            background: linear-gradient(135deg, #007bff, #00ffcc);
-            transform: scale(1.05);
-        }
+    .form-control {
+      border: none;
+      background: rgba(255, 255, 255, 0.1);
+      color: inherit;
+      border-radius: 10px;
+      padding: 0.8rem;
+      transition: all 0.3s ease;
+    }
 
-        .flash {
-            color: #ff4444;
-            font-size: 0.9em;
-            margin-top: 15px;
-        }
+    .form-control:focus {
+      box-shadow: 0 0 0 3px var(--accent);
+      background: rgba(255, 255, 255, 0.2);
+    }
 
-        /* Access Granted Animation */
-        .access-overlay {
-            position: fixed;
-            top: 0; left: 0;
-            width: 100%; height: 100%;
-            background: radial-gradient(circle at center, #00ffcc20, #000);
-            color: #00ffcc;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 3em;
-            font-weight: 900;
-            letter-spacing: 4px;
-            text-shadow: 0 0 20px #00ffcc;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.5s ease;
-            z-index: 999;
-        }
+    .btn-primary {
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      transition: 0.3s;
+    }
 
-        .access-overlay.active {
-            opacity: 1;
-            animation: pulse 1.2s ease forwards;
-        }
+    .btn-primary:hover {
+      background: #0090b8;
+      transform: scale(1.02);
+    }
 
-        @keyframes pulse {
-            0% { transform: scale(0.9); opacity: 0; }
-            40% { transform: scale(1.1); opacity: 1; }
-            100% { transform: scale(1); opacity: 1; }
-        }
+    .theme-toggle {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      background: var(--glass-dark);
+      border: none;
+      border-radius: 50%;
+      width: 42px;
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: var(--accent);
+      transition: all 0.3s ease;
+    }
 
-        footer {
-            position: fixed;
-            bottom: 15px;
-            text-align: center;
-            width: 100%;
-            font-family: 'Orbitron', sans-serif;
-            font-size: 0.9em;
-            color: #888;
-        }
+    body.light-mode .theme-toggle {
+      background: var(--glass-light);
+      color: #111;
+    }
 
-        footer a {
-            display: inline-block;
-            margin-top: 10px;
-            padding: 8px 20px;
-            background: linear-gradient(135deg, #00ffa3, #00c4ff);
-            color: #000;
-            font-weight: 700;
-            border-radius: 10px;
-            text-decoration: none;
-            box-shadow: 0 0 15px rgba(0,255,163,0.4);
-            transition: all 0.3s ease;
-        }
+    .theme-toggle:hover {
+      transform: scale(1.1);
+    }
 
-        footer a:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 35px rgba(0,255,163,0.7);
-        }
-    </style>
+    .small a {
+      text-decoration: none;
+      color: var(--accent);
+    }
+
+    .small a:hover {
+      text-decoration: underline;
+    }
+  </style>
 </head>
 <body>
+  <button class="theme-toggle" id="themeToggle" title="Toggle Dark/Light">
+    ☀️
+  </button>
 
-    <div class="login-container">
-        <h1>System Login</h1>
-        <form method="POST" id="loginForm">
-            <input type="email" name="email" placeholder="Access Email" required><br>
-            <input type="password" name="password" placeholder="Access Key" required><br>
-            <button type="submit" id="submitBtn">ENTER SYSTEM</button>
-        </form>
+  <div class="login-box">
+    <h2>AutoAffiliate AI</h2>
+    <form action="/login" method="POST">
+      <div class="mb-3">
+        <label for="username" class="form-label">Email</label>
+        <input type="text" class="form-control" name="username" placeholder="Enter email" required />
+      </div>
+      <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <input type="password" class="form-control" name="password" placeholder="Enter password" required />
+      </div>
+      <button type="submit" class="btn btn-primary w-100">Login</button>
+    </form>
+    <p class="text-center mt-3 small">
+      Need help? Contact
+      <a href="mailto:support@slickofficials.com">support@slickofficials.com</a>
+    </p>
+  </div>
 
-        {% with messages = get_flashed_messages() %}
-          {% if messages %}
-            <p class="flash">{{ messages[0] }}</p>
-          {% endif %}
-        {% endwith %}
-    </div>
-
-    <div class="access-overlay" id="accessOverlay">ACCESS GRANTED</div>
-
-    <footer>
-        <a href="/privacy" target="_blank">📜 Privacy Policy</a>
-        <p>Powered by <strong>Amson Multi Global LTD</strong> — 
-        <a href="https://slickofficials.com" target="_blank">slickofficials.com</a></p>
-    </footer>
-
-    <script>
-        const form = document.getElementById('loginForm');
-        const overlay = document.getElementById('accessOverlay');
-        const btn = document.getElementById('submitBtn');
-
-        form.addEventListener('submit', function(e) {
-            e.preventDefault();
-            overlay.classList.add('active');
-            btn.disabled = true;
-            btn.innerText = "VERIFYING...";
-            setTimeout(() => {
-                form.submit();
-            }, 1200);
-        });
-    </script>
-
+  <script>
+    const toggle = document.getElementById("themeToggle");
+    toggle.addEventListener("click", () => {
+      document.body.classList.toggle("light-mode");
+      toggle.textContent = document.body.classList.contains("light-mode") ? "🌙" : "☀️";
+    });
+  </script>
 </body>
 </html>
