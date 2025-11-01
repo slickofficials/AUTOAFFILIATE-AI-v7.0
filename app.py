@@ -1,4 +1,4 @@
-# app.py - v14.2 $10M EMPIRE | DASHBOARD AFTER LOGIN | REAL IP FROM X-Forwarded-For (LAST)
+# app.py - v14.3 $10M EMPIRE | NO IP CHECK | LOGIN → DASHBOARD LIVE
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -25,16 +25,15 @@ r = redis.from_url(REDIS_URL)
 queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
-# === SECURITY CONFIG ===
+# === SECURITY CONFIG (NO IP) ===
 ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')
-ALLOWED_IP = os.getenv('ALLOWED_IP')  # e.g., 102.88.34.12
 ADMIN_PASS = os.getenv('ADMIN_PASS')
 
 TWILIO_SID = os.getenv('TWILIO_SID')
 TWILIO_TOKEN = os.getenv('TWILIO_TOKEN')
 YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')
 
-# === LOGIN TRACKING ===
+# === LOGIN TRACKING (EMAIL ONLY) ===
 failed_logins = {}
 LOCKOUT_DURATION = timedelta(hours=24)
 MAX_ATTEMPTS = 10
@@ -71,30 +70,6 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === GET REAL CLIENT IP (LAST IN X-Forwarded-For) ===
-def get_client_ip():
-    if request.headers.getlist("X-Forwarded-For"):
-        ips = [ip.strip() for ip in request.headers.getlist("X-Forwarded-For")[0].split(',')]
-        return ips[-1]  # LAST IP = REAL CLIENT
-    return request.remote_addr
-
-# === ACCESS CHECK ===
-def check_access():
-    client_ip = get_client_ip()
-    now = datetime.now()
-
-    # Clear expired lockouts
-    for ip in list(failed_logins):
-        if failed_logins[ip]['locked_until'] < now:
-            del failed_logins[ip]
-
-    if client_ip in failed_logins and failed_logins[client_ip]['locked_until'] > now:
-        mins = int((failed_logins[client_ip]['locked_until'] - now).total_seconds() // 60)
-        flash(f"Locked out. Try again in {mins} minutes.")
-        return False
-
-    return client_ip == ALLOWED_IP
-
 # === CACHE & SECURITY HEADERS ===
 @app.after_request
 def add_header(response):
@@ -123,9 +98,7 @@ def robots():
 
 @app.route('/')
 def index():
-    if check_access():
-        return render_template('welcome.html', company=COMPANY, title="Welcome")
-    return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
+    return render_template('welcome.html', company=COMPANY, title="Welcome")
 
 @app.route('/coming_soon')
 def coming_soon():
@@ -133,50 +106,46 @@ def coming_soon():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    client_ip = get_client_ip()
-
     if request.method == 'GET':
         return render_template('login.html', company=COMPANY, title="Private Login")
-
-    if client_ip != ALLOWED_IP:
-        send_alert("BLOCKED LOGIN", f"Wrong IP: {client_ip}")
-        flash("Access Denied: Invalid IP")
-        return render_template('coming_soon.html')
 
     email = request.form['email'].strip().lower()
     password = request.form['password']
 
+    # Simple login tracking
+    client_ip = request.remote_addr
     if client_ip not in failed_logins:
         failed_logins[client_ip] = {'count': 0, 'locked_until': None}
+
+    now = datetime.now()
+    if failed_logins[client_ip]['locked_until'] and failed_logins[client_ip]['locked_until'] > now:
+        mins = int((failed_logins[client_ip]['locked_until'] - now).total_seconds() // 60)
+        flash(f"Locked out. Try again in {mins} minutes.")
+        return render_template('login.html', company=COMPANY, title="Private Login")
 
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
         if client_ip in failed_logins:
             del failed_logins[client_ip]
         user = User(email)
         login_user(user)
-        send_alert("DASHBOARD ACCESSED", f"IP: {client_ip}")
+        send_alert("DASHBOARD ACCESSED", f"Email: {email}")
         return redirect(url_for('dashboard'))
     else:
         failed_logins[client_ip]['count'] += 1
         left = MAX_ATTEMPTS - failed_logins[client_ip]['count']
         if failed_logins[client_ip]['count'] >= 3:
-            send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nIP: {client_ip}")
+            send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nEmail: {email}")
         if left <= 0:
-            failed_logins[client_ip]['locked_until'] = datetime.now() + LOCKOUT_DURATION
-            send_alert("LOCKED OUT", f"10 fails\nIP: {client_ip}")
+            failed_logins[client_ip]['locked_until'] = now + LOCKOUT_DURATION
+            send_alert("LOCKED OUT", "10 failed attempts")
             flash("BANNED: 24hr lock.")
         else:
-            flash(f"Invalid. {left} left.")
+            flash(f"Invalid. {left} attempts left.")
         return render_template('login.html', company=COMPANY, title="Private Login")
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    if not check_access():
-        logout_user()
-        flash("Session expired or IP changed.")
-        return redirect(url_for('login'))
-
     try:
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
@@ -199,9 +168,7 @@ def dashboard():
 
 @app.route('/privacy')
 def privacy():
-    if check_access():
-        return render_template('privacy.html', company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
-    return render_template('coming_soon.html')
+    return render_template('privacy.html', company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
 
 @app.route('/logout')
 @login_required
