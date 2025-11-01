@@ -4,7 +4,7 @@ Flask-Login==0.6.3
 Flask-Migrate==4.0.5
 Flask-SQLAlchemy==3.0.5
 Flask-Compress==1.14  # GZIP = 3x FASTER
-
+APScheduler==3.10.4
 # === DATABASE & QUEUE ===
 psycopg[binary]==3.2.3
 redis==5.0.1
