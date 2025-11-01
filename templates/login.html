@@ -12,6 +12,7 @@
             background: radial-gradient(circle at 50% 30%, #0d0d0d, #000);
             color: #00ffcc;
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             height: 100vh;
@@ -110,6 +111,34 @@
             40% { transform: scale(1.1); opacity: 1; }
             100% { transform: scale(1); opacity: 1; }
         }
+
+        footer {
+            position: fixed;
+            bottom: 15px;
+            text-align: center;
+            width: 100%;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 0.9em;
+            color: #888;
+        }
+
+        footer a {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 8px 20px;
+            background: linear-gradient(135deg, #00ffa3, #00c4ff);
+            color: #000;
+            font-weight: 700;
+            border-radius: 10px;
+            text-decoration: none;
+            box-shadow: 0 0 15px rgba(0,255,163,0.4);
+            transition: all 0.3s ease;
+        }
+
+        footer a:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 35px rgba(0,255,163,0.7);
+        }
     </style>
 </head>
 <body>
@@ -131,50 +160,27 @@
 
     <div class="access-overlay" id="accessOverlay">ACCESS GRANTED</div>
 
+    <footer>
+        <a href="/privacy" target="_blank">📜 Privacy Policy</a>
+        <p>Powered by <strong>Amson Multi Global LTD</strong> — 
+        <a href="https://slickofficials.com" target="_blank">slickofficials.com</a></p>
+    </footer>
+
     <script>
         const form = document.getElementById('loginForm');
         const overlay = document.getElementById('accessOverlay');
         const btn = document.getElementById('submitBtn');
 
         form.addEventListener('submit', function(e) {
-            e.preventDefault(); // stop for animation
+            e.preventDefault();
             overlay.classList.add('active');
             btn.disabled = true;
             btn.innerText = "VERIFYING...";
             setTimeout(() => {
-                form.submit(); // now submit to Flask
+                form.submit();
             }, 1200);
         });
     </script>
+
 </body>
-   <!-- Footer Section -->
-<footer style="text-align:center; margin-top:40px; font-family:'Rajdhani', sans-serif; font-size:1em; color:#aaa;">
-  <div style="margin-bottom:15px;">
-    <a href="/privacy" target="_blank"
-       style="
-          display:inline-block;
-          padding: 10px 25px;
-          background: linear-gradient(135deg, #00ffa3, #00c4ff);
-          color: #000;
-          font-family:'Orbitron', sans-serif;
-          font-weight:700;
-          font-size:1em;
-          border-radius:12px;
-          text-decoration:none;
-          box-shadow: 0 0 15px rgba(0,255,163,0.4);
-          transition: all 0.3s ease;
-       "
-       onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 0 35px rgba(0,255,163,0.7)';"
-       onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 0 15px rgba(0,255,163,0.4)';">
-      📜 Privacy Policy
-    </a>
-  </div>
-  <p style="margin-top:20px;">
-    Powered by <strong>Amson Multi Global LTD</strong><br>
-    <a href="https://slickofficials.com" target="_blank" style="color:#00c4ff; text-decoration:none;">
-      slickofficials.com
-    </a>
-  </p> 
-</footer>
- </body>   
 </html>
