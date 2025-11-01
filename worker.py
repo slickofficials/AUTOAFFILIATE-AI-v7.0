@@ -1,4 +1,4 @@
-# worker.py - v13.0 $10M EMPIRE BOT | AWIN + RAKUTEN + FB/IG/TWITTER + 24 POSTS/DAY
+# worker.py - v13.1 $10M EMPIRE BOT | AWIN + RAKUTEN + FB/IG/TWITTER + 24 POSTS/DAY
 import os
 import time
 import requests
@@ -6,15 +6,16 @@ import random
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-import facebook
+from facebook_business.ad_objects.page import Page  # ← FIXED: facebook-business
+from facebook_business.api import FacebookAdsApi
 import instabot
 import tweepy
 from twilio.rest import Client
 
 # === ENV VARS ===
 DB_URL = os.getenv('DATABASE_URL')
-AWIN_ID = os.getenv('AWIN_ID')  # e.g., 123456
-RAKUTEN_ID = os.getenv('RAKUTEN_ID')  # e.g., 1234567890
+AWIN_ID = os.getenv('AWIN_ID')
+RAKUTEN_ID = os.getenv('RAKUTEN_ID')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
 FB_TOKEN = os.getenv('FB_TOKEN')
 IG_USER = os.getenv('IG_USER')
@@ -70,29 +71,40 @@ def pull_rakuten():
 def save_links(links):
     conn, cur = get_db()
     for link in links:
-        cur.execute("INSERT INTO posts (url, source, status, created_at) VALUES (%s, %s, 'pending', %s) ON CONFLICT (url) DO NOTHING",
-                    (link, 'awin_rakuten', datetime.utcnow()))
+        cur.execute("""
+            INSERT INTO posts (url, source, status, created_at) 
+            VALUES (%s, %s, 'pending', %s) 
+            ON CONFLICT (url) DO NOTHING
+        """, (link, 'awin_rakuten', datetime.utcnow()))
     conn.commit()
     conn.close()
 
-# === POST TO FB ===
+# === POST TO FB (FIXED) ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN: return False
     try:
-        graph = facebook.GraphAPI(FB_TOKEN)
-        graph.put_object(parent_object=FB_PAGE_ID, connection_name='feed', message="Check this deal! " + link)
+        FacebookAdsApi.init(access_token=FB_TOKEN)
+        page = Page(FB_PAGE_ID)
+        page.create_feed(
+            fields=[],
+            params={'message': f"Check this deal! {link}"}
+        )
         return True
-    except: return False
+    except Exception as e:
+        print(f"FB ERROR: {e}")
+        return False
 
-# === POST TO IG ===
+# === POST TO IG (FIXED) ===
 def post_ig(link):
     if not IG_USER or not IG_PASS: return False
     try:
         bot = instabot.Bot()
         bot.login(username=IG_USER, password=IG_PASS)
-        bot.upload_photo("deal.jpg", caption="Hot deal! " + link)
+        bot.upload_photo("deal.jpg", caption=f"Hot deal! {link}")
         return True
-    except: return False
+    except Exception as e:
+        print(f"IG ERROR: {e}")
+        return False
 
 # === POST TO TWITTER ===
 def post_twitter(link):
@@ -104,20 +116,22 @@ def post_twitter(link):
             access_token=TWITTER_ACCESS_TOKEN,
             access_token_secret=TWITTER_ACCESS_SECRET
         )
-        client.create_tweet(text="Deal alert! " + link)
+        client.create_tweet(text=f"Deal alert! {link}")
         return True
-    except: return False
+    except Exception as e:
+        print(f"TWITTER ERROR: {e}")
+        return False
 
 # === MAIN BOT LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.0 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.1 $10M EMPIRE BOT LIVE")
     
-    # === YOUR 17 LINKS (HARDOCDED) ===
+    # === YOUR 17 LINKS ===
     your_links = [
-        "https://tidd.ly/4ohUWG3", "https://tidd.ly/4ohUWG3", "https://tidd.ly/4oQBBMj",
-        "https://tidd.ly/3WSHQDr", "https://tidd.ly/4obPepg", "https://tidd.ly/4hLLZCI",
-        "https://tidd.ly/47PUvwR"
-        # ADD ALL 17 HERE
+        "https://tidd.ly/4ohUWG3", "https://tidd.ly/4oQBBMj",
+        "https://tidd.ly/3WSHQDr", "https://tidd.ly/4obPepg",
+        "https://tidd.ly/4hLLZCI", "https://tidd.ly/47PUvwR"
+        # ADD ALL 17
     ]
     save_links(your_links)
 
@@ -153,7 +167,7 @@ def run_daily_campaign():
         if success:
             send_alert("POSTED", f"Deal live: {link[:50]}...")
         
-        time.sleep(3600)  # 1 HOUR = 24 POSTS/DAY
+        time.sleep(3600)  # 1 HOUR
 
 if __name__ == '__main__':
     run_daily_campaign()
