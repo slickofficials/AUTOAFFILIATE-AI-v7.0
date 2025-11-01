@@ -1,14 +1,15 @@
-# app.py — production controller (final)
+# app.py — AutoAffiliate Controller (final dashboard + controls)
 import os
 import logging
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
+import math
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, abort
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 from threading import Thread
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-# worker controls - worker.py must be in same directory
-from worker import start_worker_background, refresh_all_sources, enqueue_manual_link
+# worker control functions (worker.py must be adjacent)
+from worker import start_worker_background, refresh_all_sources, enqueue_manual_link, get_stats
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
@@ -47,39 +48,32 @@ def sitemap(): return send_from_directory(".", "sitemap.xml")
 def robots(): return send_from_directory(".", "robots.txt")
 
 @app.route("/")
-def index(): return render_template("welcome.html", company=COMPANY, title="Welcome")
+def index():
+    return render_template("welcome.html", company=COMPANY, title="Welcome")
 
-@app.route("/coming_soon")
-def coming_soon(): return render_template("coming_soon.html", company=COMPANY, title="Coming Soon")
-
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "GET":
         return render_template("login.html", company=COMPANY, title="Private Login")
-
     email = (request.form.get("email") or request.form.get("username") or "").strip().lower()
-    password = request.form.get("password", "")
+    password = request.form.get("password","")
     if not email or not password:
         flash("Missing login fields.")
         return render_template("login.html", company=COMPANY, title="Private Login")
-
     client_ip = request.remote_addr or "unknown"
     if client_ip not in failed_logins:
         failed_logins[client_ip] = {"count": 0, "locked_until": None}
-
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     locked_until = failed_logins[client_ip]["locked_until"]
     if locked_until and locked_until > now:
         mins = int((locked_until - now).total_seconds() // 60)
         flash(f"Locked out. Try again in {mins} minutes.")
         return render_template("login.html", company=COMPANY, title="Private Login")
-
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
-        if client_ip in failed_logins:
-            del failed_logins[client_ip]
-        user = User(email)
-        login_user(user)
+        if client_ip in failed_logins: del failed_logins[client_ip]
+        user = User(email); login_user(user)
         logger.info("Login success: %s", email)
+        # start a background refresh when logging in
         Thread(target=refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
@@ -97,52 +91,38 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    posts_sent = revenue = referrals = 0
     try:
-        import psycopg
-        from psycopg.rows import dict_row
-        DB_URL = os.getenv("DATABASE_URL")
-        conn = psycopg.connect(DB_URL, row_factory=dict_row)
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
-        posts_sent = cur.fetchone()["post_count"] or 0
-        cur.execute("SELECT COALESCE(SUM(amount),0) as total_revenue FROM earnings")
-        revenue = cur.fetchone()["total_revenue"] or 0
-        cur.execute("SELECT COUNT(*) as ref_count FROM referrals")
-        referrals = cur.fetchone()["ref_count"] or 0
-        conn.close()
+        stats = get_stats()
+        # compute next post in seconds
+        next_post_in = stats.get("next_post_in_seconds", None)
+        if next_post_in is not None:
+            # show in human friendly hh:mm:ss
+            secs = int(next_post_in)
+            h = secs // 3600; m = (secs % 3600) // 60; s = secs % 60
+            next_post_human = f"{h:02d}:{m:02d}:{s:02d}"
+        else:
+            next_post_human = "N/A"
+        return render_template("dashboard.html",
+                               company=COMPANY,
+                               title="Dashboard",
+                               stats=stats,
+                               next_post_in=next_post_human)
     except Exception as e:
-        logger.exception("Dashboard DB error: %s", e)
-    return render_template("dashboard.html", posts_sent=posts_sent, revenue=revenue, referrals=referrals, company=COMPANY, title="Dashboard | $10M Empire")
+        logger.exception("Dashboard error: %s", e)
+        return render_template("dashboard.html", company=COMPANY, title="Dashboard", stats={})
 
-@app.route("/privacy")
-def privacy(): return render_template("privacy.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
-
-@app.route("/logout")
+@app.route("/refresh", methods=["POST","GET"])
 @login_required
-def logout():
-    logout_user()
-    return redirect(url_for("index"))
-
-@app.route("/health")
-def health(): return jsonify({"ok": True, "ts": datetime.utcnow().isoformat()}), 200
-
-@app.route("/start", methods=["GET","POST"])
-def start():
-    Thread(target=start_worker_background, daemon=True).start()
-    logger.info("/start invoked - worker requested")
-    return jsonify({"status":"worker_start_requested"}), 202
-
-@app.route("/refresh", methods=["POST"])
 def refresh():
     try:
-        count = refresh_all_sources()
-        return jsonify({"status":"ok","pulled_saved":count}), 200
+        saved = refresh_all_sources()
+        return jsonify({"status":"ok","saved": saved}), 200
     except Exception as e:
         logger.exception("Manual refresh failed: %s", e)
-        return jsonify({"status":"error","error":str(e)}), 500
+        return jsonify({"status":"error","error": str(e)}), 500
 
 @app.route("/enqueue", methods=["POST"])
+@login_required
 def enqueue():
     data = request.get_json() or {}
     url = data.get("url")
@@ -155,6 +135,42 @@ def enqueue():
         logger.exception("Enqueue failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/r/<int:post_id>")
+def redirect_tracking(post_id):
+    # Redirects to affiliate URL and logs a click (works for social links)
+    try:
+        import psycopg
+        from psycopg.rows import dict_row
+        DB = os.getenv("DATABASE_URL")
+        conn = psycopg.connect(DB, row_factory=dict_row)
+        cur = conn.cursor()
+        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            abort(404)
+        real = row["url"]
+        # record click
+        cur.execute("INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)",
+                    (post_id, request.remote_addr or "unknown", request.headers.get("User-Agent",""), datetime.now(timezone.utc)))
+        conn.commit()
+        conn.close()
+        return redirect(real, code=302)
+    except Exception as e:
+        logger.exception("Redirect error: %s", e)
+        abort(500)
+
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "ts": datetime.now(timezone.utc).isoformat()}), 200
+
+@app.route("/start", methods=["GET","POST"])
+@login_required
+def start():
+    Thread(target=start_worker_background, daemon=True).start()
+    logger.info("/start invoked - worker requested")
+    return jsonify({"status":"worker_start_requested"}), 202
+
 @app.errorhandler(404)
 def not_found(e): return render_template("coming_soon.html"), 404
 
@@ -166,7 +182,6 @@ if __name__ == "__main__":
     logger.info("Starting app on port %s", port)
     try:
         Thread(target=start_worker_background, daemon=True).start()
-        logger.info("Worker start requested at boot")
     except Exception:
         logger.exception("Auto worker start failed")
     app.run(host="0.0.0.0", port=port, debug=False)
