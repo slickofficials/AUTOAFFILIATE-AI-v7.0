@@ -1,4 +1,4 @@
-# worker.py - v13.8 $10M EMPIRE BOT | FB DIRECT HTTP | NO SDK | 100% WORKING
+# worker.py - v13.9 $10M EMPIRE BOT | FB DIRECT HTTP | SYNTAX FIXED | 100% WORKING
 import os
 import time
 import requests
@@ -28,7 +28,8 @@ YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')
 # === DB ===
 def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
-    return conn, cur = conn.cursor()
+    cur = conn.cursor()
+    return conn, cur
 
 # === TWILIO ALERT ===
 client = Client(TWILIO_SID, TWILIO_TOKEN) if TWILIO_SID else None
@@ -124,7 +125,7 @@ def post_twitter(link):
 
 # === MAIN LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.8 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.9 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
