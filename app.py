@@ -1,4 +1,4 @@
-# app.py - v14.1 $10M EMPIRE | DASHBOARD AFTER LOGIN | REAL IP FROM X-Forwarded-For
+# app.py - v14.2 $10M EMPIRE | DASHBOARD AFTER LOGIN | REAL IP FROM X-Forwarded-For (LAST)
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -71,15 +71,14 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === GET REAL CLIENT IP (X-Forwarded-For) ===
+# === GET REAL CLIENT IP (LAST IN X-Forwarded-For) ===
 def get_client_ip():
     if request.headers.getlist("X-Forwarded-For"):
-        ip = request.headers.getlist("X-Forwarded-For")[0].split(',')[0].strip()
-    else:
-        ip = request.remote_addr
-    return ip
+        ips = [ip.strip() for ip in request.headers.getlist("X-Forwarded-For")[0].split(',')]
+        return ips[-1]  # LAST IP = REAL CLIENT
+    return request.remote_addr
 
-# === ACCESS CHECK (USES REAL IP) ===
+# === ACCESS CHECK ===
 def check_access():
     client_ip = get_client_ip()
     now = datetime.now()
@@ -136,17 +135,14 @@ def coming_soon():
 def login():
     client_ip = get_client_ip()
 
-    # SHOW LOGIN FORM TO EVERYONE
     if request.method == 'GET':
         return render_template('login.html', company=COMPANY, title="Private Login")
 
-    # BLOCK WRONG IP ON SUBMIT
     if client_ip != ALLOWED_IP:
-        send_alert("BLOCKED LOGIN ATTEMPT", f"Wrong IP: {client_ip}")
+        send_alert("BLOCKED LOGIN", f"Wrong IP: {client_ip}")
         flash("Access Denied: Invalid IP")
         return render_template('coming_soon.html')
 
-    # VALIDATE CREDENTIALS
     email = request.form['email'].strip().lower()
     password = request.form['password']
 
@@ -158,7 +154,7 @@ def login():
             del failed_logins[client_ip]
         user = User(email)
         login_user(user)
-        send_alert("BEAST MODE ON", f"Dashboard accessed\nIP: {client_ip}")
+        send_alert("DASHBOARD ACCESSED", f"IP: {client_ip}")
         return redirect(url_for('dashboard'))
     else:
         failed_logins[client_ip]['count'] += 1
@@ -167,18 +163,20 @@ def login():
             send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nIP: {client_ip}")
         if left <= 0:
             failed_logins[client_ip]['locked_until'] = datetime.now() + LOCKOUT_DURATION
-            send_alert("ACCOUNT LOCKED", f"10 failed attempts\nIP: {client_ip}")
-            flash("BANNED: 10 failed attempts. 24hr lock.")
+            send_alert("LOCKED OUT", f"10 fails\nIP: {client_ip}")
+            flash("BANNED: 24hr lock.")
         else:
-            flash(f"Invalid. {left} attempts left.")
+            flash(f"Invalid. {left} left.")
         return render_template('login.html', company=COMPANY, title="Private Login")
 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     if not check_access():
-        return render_template('coming_soon.html')
-    
+        logout_user()
+        flash("Session expired or IP changed.")
+        return redirect(url_for('login'))
+
     try:
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
@@ -215,14 +213,6 @@ def logout():
 @app.route('/health')
 def health():
     return 'OK', 200
-
-@app.route('/beast_campaign')
-@login_required
-def beast_campaign():
-    if not check_access():
-        return render_template('coming_soon.html')
-    job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v14.1 BEAST MODE ACTIVATED', 'job_id': job.id})
 
 @app.errorhandler(404)
 def not_found(e):
