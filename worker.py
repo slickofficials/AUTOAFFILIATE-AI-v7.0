@@ -1,10 +1,10 @@
-# worker.py - v15.0 $10M EMPIRE BOT | DIRECT API — NO SDK — 100% WORKING
+# worker.py - v15.1 $10M EMPIRE BOT | NO WARNINGS | 100% CLEAN
 import os
 import time
 import requests
 import psycopg
 from psycopg.rows import dict_row
-from datetime import datetime
+from datetime import datetime, timezone  # ← ADDED timezone
 import tweepy
 from twilio.rest import Client
 
@@ -13,9 +13,9 @@ DB_URL = os.getenv('DATABASE_URL')
 AWIN_ID = os.getenv('AWIN_ID')
 RAKUTEN_ID = os.getenv('RAKUTEN_ID')
 FB_PAGE_ID = os.getenv('FB_PAGE_ID')
-FB_TOKEN = os.getenv('FB_TOKEN')  # Long-lived page token
-IG_USER_ID = os.getenv('IG_USER_ID')  # Instagram Business ID
-IG_TOKEN = os.getenv('IG_TOKEN')  # Long-lived IG token
+FB_TOKEN = os.getenv('FB_TOKEN')
+IG_USER_ID = os.getenv('IG_USER_ID')
+IG_TOKEN = os.getenv('IG_TOKEN')
 TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
 TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
 TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
@@ -72,11 +72,11 @@ def save_links(links):
             INSERT INTO posts (url, source, status, created_at) 
             VALUES (%s, %s, 'pending', %s) 
             ON CONFLICT (url) DO NOTHING
-        """, (link, 'awin_rakuten', datetime.utcnow()))
+        """, (link, 'awin_rakuten', datetime.now(timezone.utc)))  # ← FIXED
     conn.commit()
     conn.close()
 
-# === POST TO FB — DIRECT HTTP ===
+# === POST TO FB ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN: return False
     try:
@@ -89,14 +89,14 @@ def post_fb(link):
         return r.status_code == 200
     except: return False
 
-# === POST TO IG — DIRECT GRAPH API ===
+# === POST TO IG ===
 def post_ig(link):
     if not IG_USER_ID or not IG_TOKEN: return False
     try:
-        # Step 1: Create media
+        image_url = "https://i.imgur.com/airmax270.jpg"
         url = f"https://graph.facebook.com/v20.0/{IG_USER_ID}/media"
         params = {
-            'image_url': 'https://i.imgur.com/airmax270.jpg',  # Public image
+            'image_url': image_url,
             'caption': f"Hot deal! {link}",
             'access_token': IG_TOKEN
         }
@@ -104,7 +104,6 @@ def post_ig(link):
         if r.status_code != 200: return False
         creation_id = r.json()['id']
 
-        # Step 2: Publish
         url = f"https://graph.facebook.com/v20.0/{IG_USER_ID}/media_publish"
         params = {'creation_id': creation_id, 'access_token': IG_TOKEN}
         r = requests.post(url, params=params, timeout=10)
@@ -127,43 +126,35 @@ def post_twitter(link):
 
 # === MAIN LOOP ===
 def run_daily_campaign():
-    send_alert("BOT LIVE", "v15.0 $10M EMPIRE BOT RUNNING")
+    send_alert("BOT LIVE", "v15.1 $10M EMPIRE BOT RUNNING — NO WARNINGS")
     
-    # === YOUR 17 LINKS ===
     your_links = [
         "https://tidd.ly/4ohUWG3", "https://tidd.ly/4oQBBMj",
         "https://tidd.ly/3WSHQDr", "https://tidd.ly/4obPepg",
         "https://tidd.ly/4hLLZCI", "https://tidd.ly/47PUvwR"
-        # ADD ALL 17
     ]
     save_links(your_links)
+    save_links(pull_awin() + pull_rakuten())
 
-    # === PULL EXTERNAL ===
-    awin_links = pull_awin()
-    rakuten_links = pull_rakuten()
-    save_links(awin_links + rakuten_links)
-
-    # === POST 24x/DAY ===
     while True:
         conn, cur = get_db()
         cur.execute("SELECT url FROM posts WHERE status='pending' ORDER BY RANDOM() LIMIT 1")
         row = cur.fetchone()
         conn.close()
-
         if not row:
             time.sleep(3600)
             continue
 
         link = row['url']
         success = False
-
         if post_fb(link): success = True
         if post_ig(link): success = True
         if post_twitter(link): success = True
 
         status = 'sent' if success else 'failed'
         conn, cur = get_db()
-        cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE url=%s", (status, datetime.utcnow(), link))
+        cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE url=%s", 
+                   (status, datetime.now(timezone.utc), link))  # ← FIXED
         conn.commit()
         conn.close()
 
