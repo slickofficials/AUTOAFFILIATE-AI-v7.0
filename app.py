@@ -1,4 +1,4 @@
-# app.py - v10.3 $10M EMPIRE | FIXED LOGIN + DASHBOARD + WHATSAPP + SECURITY
+# app.py - v10.4 $10M EMPIRE | FIXED LOGIN + DASHBOARD + WHATSAPP + IP SECURITY
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_compress import Compress
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -9,7 +9,6 @@ import psycopg
 from psycopg.rows import dict_row
 import bcrypt
 import openai
-import json
 import tempfile
 from google_auth_oauthlib.flow import InstalledAppFlow
 import requests
@@ -30,9 +29,10 @@ queue = rq.Queue(connection=r)
 openai.api_key = os.getenv('OPENAI_API_KEY')
 
 # === SECURITY CONFIG ===
-ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL')
-ALLOWED_IP = os.getenv('ALLOWED_IP')
+ALLOWED_EMAIL = os.getenv('ALLOWED_EMAIL', 'slickofficials@gmail.com')
+ALLOWED_IP = os.getenv('ALLOWED_IP', '102.89.32.32')
 ADMIN_PASS = os.getenv('ADMIN_PASS')
+SUPPORT_EMAIL = "support@slickofficials.com"
 
 TWILIO_SID = os.getenv('TWILIO_SID')
 TWILIO_TOKEN = os.getenv('TWILIO_TOKEN')
@@ -47,7 +47,7 @@ MAX_ATTEMPTS = 10
 class User(UserMixin):
     def __init__(self, id, email):
         self.id = id
-        self.email = email  # ← FIXED: Add email to User
+        self.email = email
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -55,12 +55,11 @@ login_manager.login_view = 'login'
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User(user_id, ALLOWED_EMAIL)  # ← FIXED: Pass email
+    return User(user_id, ALLOWED_EMAIL)
 
-# === TWILIO CLIENT ===
+# === TWILIO ALERT ===
 client = Client(TWILIO_SID, TWILIO_TOKEN) if TWILIO_SID and TWILIO_TOKEN else None
 
-# === SEND WHATSAPP ALERT ===
 def send_alert(title, body):
     if not client or not YOUR_WHATSAPP:
         return
@@ -75,28 +74,30 @@ def send_alert(title, body):
     except Exception as e:
         print(f"[WHATSAPP FAILED] {e}")
 
-# === ACCESS CHECK (FOR DASHBOARD) ===
+# === IP CHECK ===
 def check_access():
     client_ip = request.remote_addr
     now = datetime.now()
     for ip in list(failed_logins):
-        if failed_logins[ip]['locked_until'] < now:
+        if failed_logins[ip]['locked_until'] and failed_logins[ip]['locked_until'] < now:
             del failed_logins[ip]
-    if client_ip in failed_logins and failed_logins[client_ip]['locked_until'] > now:
+    if client_ip in failed_logins and failed_logins[client_ip]['locked_until'] and failed_logins[client_ip]['locked_until'] > now:
         mins = int((failed_logins[client_ip]['locked_until'] - now).total_seconds() // 60)
         flash(f"Locked out. Try again in {mins} minutes.")
         return False
     if client_ip != ALLOWED_IP:
+        flash("Unauthorized IP access attempt detected.")
+        send_alert("BLOCKED ACCESS", f"IP: {client_ip} tried accessing dashboard.")
         return False
     return True
 
-# === CACHE & SECURITY HEADERS ===
+# === SECURITY HEADERS ===
 @app.after_request
 def add_header(response):
     response.headers['X-Content-Type-Options'] = 'nosniff'
     response.headers['X-Frame-Options'] = 'DENY'
     response.headers['X-XSS-Protection'] = '1; mode=block'
-    response.headers['Cache-Control'] = 'public, max-age=31536000'
+    response.headers['Cache-Control'] = 'no-store'
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     return response
 
@@ -105,50 +106,33 @@ def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# === SERVE SITEMAP & ROBOTS ===
-@app.route('/sitemap.xml')
-def sitemap():
-    return send_from_directory('.', 'sitemap.xml')
-
-@app.route('/robots.txt')
-def robots():
-    return send_from_directory('.', 'robots.txt')
-
-# === PUBLIC PAGES (COMING SOON) ===
+# === PUBLIC PAGES ===
 @app.route('/')
 def index():
     if check_access():
         return redirect(url_for('login'))
-    return render_template('coming_soon.html', company=COMPANY, title="Coming Soon")
+    return render_template('coming_soon.html', company=COMPANY, title="Coming Soon", support_email=SUPPORT_EMAIL)
 
 @app.route('/privacy')
 def privacy():
-    if check_access():
-        return render_template('privacy.html', company=COMPANY, title="Privacy Policy")
-    return render_template('coming_soon.html')
+    return render_template('coming_soon.html', company=COMPANY, title="Privacy Policy", support_email=SUPPORT_EMAIL)
 
 @app.route('/terms')
 def terms():
-    if check_access():
-        return render_template('terms.html', company=COMPANY, title="Terms of Service")
-    return render_template('coming_soon.html')
+    return render_template('coming_soon.html', company=COMPANY, title="Terms of Service", support_email=SUPPORT_EMAIL)
 
-# === LOGIN — ALWAYS VISIBLE ===
+# === LOGIN ===
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     client_ip = request.remote_addr
-
-    # === SHOW LOGIN TO EVERYONE ===
     if request.method == 'GET':
-        return render_template('login.html', company=COMPANY, title="Private Login")
+        return render_template('login.html', company=COMPANY, title="Private Login", support_email=SUPPORT_EMAIL)
 
-    # === POST: CHECK IP FOR SUBMIT ===
     if client_ip != ALLOWED_IP:
         send_alert("BLOCKED LOGIN ATTEMPT", f"Wrong IP: {client_ip}")
         flash("Access Denied: Invalid IP")
-        return render_template('coming_soon.html')
+        return render_template('coming_soon.html', company=COMPANY, title="Access Denied", support_email=SUPPORT_EMAIL)
 
-    # === VALIDATE CREDENTIALS ===
     email = request.form['email'].strip().lower()
     password = request.form['password']
 
@@ -156,29 +140,28 @@ def login():
         failed_logins[client_ip] = {'count': 0, 'locked_until': None}
 
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
-        if client_ip in failed_logins: del failed_logins[client_ip]
+        if client_ip in failed_logins:
+            del failed_logins[client_ip]
         user = User(email, ALLOWED_EMAIL)
         login_user(user)
-        send_alert("BEAST MODE ON", f"Dashboard accessed\nIP: {client_ip}")
+        send_alert("LOGIN SUCCESS", f"Dashboard accessed by {email}\nIP: {client_ip}")
         return redirect(url_for('dashboard'))
     else:
         failed_logins[client_ip]['count'] += 1
         left = MAX_ATTEMPTS - failed_logins[client_ip]['count']
-        if failed_logins[client_ip]['count'] >= 3:
-            send_alert("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nIP: {client_ip}")
         if left <= 0:
             failed_logins[client_ip]['locked_until'] = datetime.now() + LOCKOUT_DURATION
-            send_alert("ACCOUNT LOCKED", f"10 failed attempts\nIP: {client_ip}")
-            flash("BANNED: 10 failed attempts. 24hr lock.")
+            send_alert("LOCKOUT TRIGGERED", f"IP: {client_ip}")
+            flash("Account locked. Try again in 24 hours.")
         else:
-            flash(f"Invalid. {left} attempts left.")
-        return render_template('login.html', company=COMPANY, title="Private Login")
+            flash(f"Invalid credentials. {left} attempts left.")
+        return render_template('login.html', company=COMPANY, title="Private Login", support_email=SUPPORT_EMAIL)
 
 # === LOGOUT ===
 @app.route('/logout')
 @login_required
 def logout():
-    send_alert("LOGGED OUT", "Dashboard session ended.")
+    send_alert("LOGGED OUT", f"{current_user.email} logged out.")
     logout_user()
     return redirect(url_for('index'))
 
@@ -187,108 +170,25 @@ def logout():
 @login_required
 def dashboard():
     if not check_access():
-        return render_template('coming_soon.html')
-    
-    user_id = session.get('user_id')
+        return render_template('coming_soon.html', company=COMPANY, support_email=SUPPORT_EMAIL)
+
     try:
         conn, cur = get_db()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
         posts_sent = cur.fetchone()['post_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
+        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings")
         revenue = cur.fetchone()['total_revenue'] or 0
-        cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
-        referrals = cur.fetchone()['ref_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(reward), 0) as ref_earnings FROM referrals WHERE referrer_id = %s", (user_id,))
-        ref_earnings = cur.fetchone()['ref_earnings'] or 0
-        cur.execute("SELECT referred_email, reward, created_at FROM referrals WHERE referrer_id = %s ORDER BY created_at DESC LIMIT 10", (user_id,))
-        ref_list = cur.fetchall()
         conn.close()
-    except Exception as e:
-        posts_sent = revenue = referrals = ref_earnings = 0
-        ref_list = []
+    except:
+        posts_sent = 0
+        revenue = 0
 
     return render_template('dashboard.html',
-                         posts_sent=posts_sent,
-                         revenue=revenue,
-                         referrals=referrals,
-                         ref_earnings=ref_earnings,
-                         ref_list=ref_list,
-                         company=COMPANY,
-                         title="Dashboard | $10M Empire")
-
-# === LIVE STATS API ===
-@app.route('/api/stats')
-@login_required
-def api_stats():
-    if not check_access():
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    user_id = session.get('user_id')
-    try:
-        conn, cur = get_db()
-        cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
-        posts_sent = cur.fetchone()['post_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(amount), 0) as total_revenue FROM earnings WHERE user_id = %s", (user_id,))
-        revenue = cur.fetchone()['total_revenue'] or 0
-        cur.execute("SELECT COUNT(*) as ref_count FROM referrals WHERE referrer_id = %s", (user_id,))
-        referrals = cur.fetchone()['ref_count'] or 0
-        cur.execute("SELECT COALESCE(SUM(reward), 0) as ref_earnings FROM referrals WHERE referrer_id = %s", (user_id,))
-        ref_earnings = cur.fetchone()['ref_earnings'] or 0
-        conn.close()
-        return jsonify({
-            'posts_sent': posts_sent,
-            'revenue': float(revenue),
-            'referrals': referrals,
-            'ref_earnings': float(ref_earnings)
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# === AUTO-PAYOUT ===
-@app.route('/payout', methods=['POST'])
-@login_required
-def payout():
-    if not check_access():
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    user_id = session.get('user_id')
-    amount = request.json.get('amount', 0)
-    bank_account = request.json.get('bank_account')
-    if amount <= 0 or not bank_account:
-        return jsonify({'error': 'Invalid amount or bank'}), 400
-    
-    conn, cur = get_db()
-    cur.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
-    user = cur.fetchone()
-    if not user or user['balance'] < amount:
-        conn.close()
-        return jsonify({'error': 'Insufficient balance'}), 400
-    
-    paystack_secret = os.getenv('PAYSTACK_SECRET_KEY')
-    headers = {'Authorization': f'Bearer {paystack_secret}'}
-    payout_data = {
-        'source': 'balance',
-        'amount': int(amount * 100),
-        'recipient': bank_account,
-        'reason': 'Affiliate earnings'
-    }
-    r = requests.post('https://api.paystack.co/transfer', headers=headers, json=payout_data, timeout=10)
-    
-    if r.status_code == 200:
-        cur.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (amount, user_id))
-        cur.execute("INSERT INTO earnings (user_id, amount, source, created_at) VALUES (%s, %s, %s, %s)", 
-                    (user_id, -amount, 'payout', datetime.utcnow()))
-        conn.commit()
-        conn.close()
-        return jsonify({'status': f'₦{amount} paid out!'})
-    else:
-        conn.close()
-        return jsonify({'error': f'Payout failed: {r.text}'}), 500
-
-# === HEALTH ===
-@app.route('/health')
-def health():
-    return 'OK', 200
+                           posts_sent=posts_sent,
+                           revenue=revenue,
+                           company=COMPANY,
+                           title="Dashboard | $10M Empire",
+                           support_email=SUPPORT_EMAIL)
 
 # === BEAST CAMPAIGN ===
 @app.route('/beast_campaign')
@@ -297,93 +197,17 @@ def beast_campaign():
     if not check_access():
         return render_template('coming_soon.html')
     job = queue.enqueue('worker.run_daily_campaign')
-    return jsonify({'status': 'v10.3 $10M BEAST MODE MODE ACTIVATED', 'job_id': job.id})
+    return jsonify({'status': 'v10.4 $10M BEAST MODE ACTIVE', 'job_id': job.id})
 
-# === YOUTUBE AUTH ===
-@app.route('/youtube_auth')
-@login_required
-def youtube_auth():
-    if not check_access():
-        return render_template('coming_soon.html')
-    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
-    if not secrets_json:
-        return "<h1 style='color:red'>ERROR: GOOGLE_CLIENT_SECRETS missing</h1>"
-
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        f.write(secrets_json)
-        temp_path = f.name
-
-    try:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            temp_path,
-            scopes=['https://www.googleapis.com/auth/youtube.upload'],
-            redirect_uri=f"https://{request.host}/youtube_callback"
-        )
-        auth_url, _ = flow.authorization_url(prompt='consent')
-        os.unlink(temp_path)
-        return f'''
-        <div style="background:#000;color:#0f0;font-family:Orbitron;text-align:center;padding:50px;">
-            <h1>CONNECT YOUTUBE</h1>
-            <a href="{auth_url}" target="_blank">
-                <button style="padding:18px 40px;background:#f00;color:#fff;border:none;font-size:1.3em;cursor:pointer;border-radius:10px;">
-                    AUTHORIZE NOW
-                </button>
-            </a>
-        </div>
-        '''
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-        return f"<h1 style='color:red'>Setup Failed: {str(e)}</h1>"
-
-# === YOUTUBE CALLBACK ===
-@app.route('/youtube_callback')
-def youtube_callback():
-    code = request.args.get('code')
-    if not code:
-        return "<h1 style='color:red'>Auth Denied</h1>"
-
-    secrets_json = os.getenv('GOOGLE_CLIENT_SECRETS')
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
-        f.write(secrets_json)
-        temp_path = f.name
-
-    try:
-        flow = InstalledAppFlow.from_client_secrets_file(
-            temp_path,
-            scopes=['https://www.googleapis.com/auth/youtube.upload'],
-            redirect_uri=f"https://{request.host}/youtube_callback"
-        )
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-        with open('youtube_token.json', 'w') as f:
-            f.write(creds.to_json())
-        os.unlink(temp_path)
-        return "<h1 style='color:#0f0;font-family:Orbitron'>YouTube Connected! Auto-Upload ACTIVE</h1>"
-    except Exception as e:
-        if os.path.exists(temp_path):
-            os.unlink(temp_path)
-        return f"<h1 style='color:red'>Token Failed: {str(e)}</h1>"
-
-# === MINI APP ===
-@app.route('/miniapp')
-def miniapp():
-    return render_template('coming_soon.html')
-
-# === UPSELL ===
-@app.route('/upsell', methods=['POST'])
-def upsell():
-    return render_template('coming_soon.html')
+# === HEALTH ===
+@app.route('/health')
+def health():
+    return 'OK', 200
 
 # === 404 ===
 @app.errorhandler(404)
 def not_found(e):
-    return render_template('coming_soon.html'), 404
-
-# === CATCH-ALL ===
-@app.route('/<path:path>')
-def catch_all(path):
-    return render_template('coming_soon.html')
+    return render_template('coming_soon.html', company=COMPANY, support_email=SUPPORT_EMAIL), 404
 
 # === RUN ===
 if __name__ == '__main__':
