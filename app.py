@@ -1,4 +1,4 @@
-# app.py — v16.1 | AutoAffiliate AI | SlickOfficials HQ
+# app.py — v17 | AutoAffiliate All-in-One Controller
 import os
 import logging
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
@@ -7,30 +7,28 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from threading import Thread
 from datetime import datetime, timedelta
 
-# worker control functions (make sure worker.py sits next to this file)
+# worker control functions (worker.py must be next to this file)
 from worker import start_worker_background, refresh_all_sources, enqueue_manual_link
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("app")
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.getenv("SECRET_KEY", "slickofficials_hq_2025")
 Compress(app)
 
 COMPANY = os.getenv("COMPANY_NAME", "SlickOfficials HQ | Amson Multi Global LTD")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@slickofficials.com")
 
-# Login config
+# Login config (email-only auth)
 ALLOWED_EMAIL = os.getenv("ALLOWED_EMAIL", "admin@example.com")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "12345")
-
-# Lockout config
 failed_logins = {}
-LOCKOUT_DURATION = timedelta(hours=24)
+LOCKOUT_DURATION = timedelta(hours=int(os.getenv("LOCKOUT_HOURS", "24")))
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "10"))
 
-# Flask-Login
+# Flask-Login setup
 class User(UserMixin):
     def __init__(self, email):
         self.id = email
@@ -45,16 +43,13 @@ def load_user(user_id):
         return User(user_id)
     return None
 
-# Static helpers
+# Static routes
 @app.route("/sitemap.xml")
-def sitemap():
-    return send_from_directory(".", "sitemap.xml")
-
+def sitemap(): return send_from_directory(".", "sitemap.xml")
 @app.route("/robots.txt")
-def robots():
-    return send_from_directory(".", "robots.txt")
+def robots(): return send_from_directory(".", "robots.txt")
 
-# Routes
+# Home & UI
 @app.route("/")
 def index():
     return render_template("welcome.html", company=COMPANY, title="Welcome")
@@ -63,6 +58,7 @@ def index():
 def coming_soon():
     return render_template("coming_soon.html", company=COMPANY, title="Coming Soon")
 
+# Login route (accepts email or username)
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
@@ -70,7 +66,6 @@ def login():
 
     email = (request.form.get("email") or request.form.get("username") or "").strip().lower()
     password = request.form.get("password", "")
-
     if not email or not password:
         flash("Missing login fields.")
         return render_template("login.html", company=COMPANY, title="Private Login")
@@ -91,15 +86,15 @@ def login():
             del failed_logins[client_ip]
         user = User(email)
         login_user(user)
-        logger.info("Login success for %s", email)
-        # start a refresh in background (non-blocking)
-        Thread(target=lambda: refresh_all_sources(), daemon=True).start()
+        logger.info("LOGIN: %s", email)
+        # trigger a background refresh (non-blocking)
+        Thread(target=refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
         failed_logins[client_ip]["count"] += 1
         left = MAX_ATTEMPTS - failed_logins[client_ip]["count"]
         if failed_logins[client_ip]["count"] >= 3:
-            logger.warning("Failed login attempt #%s for %s", failed_logins[client_ip]["count"], email)
+            logger.warning("FAILED LOGIN #%s for %s", failed_logins[client_ip]["count"], email)
         if left <= 0:
             failed_logins[client_ip]["locked_until"] = now + LOCKOUT_DURATION
             flash("BANNED: 24hr lock.")
@@ -107,10 +102,10 @@ def login():
             flash(f"Invalid credentials. {left} attempts left.")
         return render_template("login.html", company=COMPANY, title="Private Login")
 
+# Dashboard
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # Read summary stats from DB; swallow errors
     posts_sent = revenue = referrals = 0
     try:
         import psycopg
@@ -126,17 +121,11 @@ def dashboard():
         referrals = cur.fetchone()["ref_count"] or 0
         conn.close()
     except Exception as e:
-        logger.exception("DB read error on dashboard: %s", e)
-    return render_template("dashboard.html",
-                           posts_sent=posts_sent,
-                           revenue=revenue,
-                           referrals=referrals,
-                           company=COMPANY,
-                           title="Dashboard | $10M Empire")
+        logger.exception("Dashboard DB read error: %s", e)
+    return render_template("dashboard.html", posts_sent=posts_sent, revenue=revenue, referrals=referrals, company=COMPANY, title="Dashboard | $10M Empire")
 
 @app.route("/privacy")
-def privacy():
-    return render_template("privacy.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
+def privacy(): return render_template("privacy.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
 
 @app.route("/logout")
 @login_required
@@ -145,14 +134,13 @@ def logout():
     return redirect(url_for("index"))
 
 @app.route("/health")
-def health():
-    return jsonify({"ok": True, "ts": datetime.utcnow().isoformat()}), 200
+def health(): return jsonify({"ok": True, "ts": datetime.utcnow().isoformat()}), 200
 
 # Control endpoints
 @app.route("/start", methods=["GET", "POST"])
 def start():
     Thread(target=start_worker_background, daemon=True).start()
-    logger.info("Start invoked — worker start requested.")
+    logger.info("Worker start requested via /start")
     return jsonify({"status": "worker_start_requested"}), 202
 
 @app.route("/refresh", methods=["POST"])
@@ -177,21 +165,20 @@ def enqueue():
         logger.exception("Enqueue failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
+# 404 catch-all
 @app.errorhandler(404)
-def not_found(e):
-    return render_template("coming_soon.html"), 404
+def not_found(e): return render_template("coming_soon.html"), 404
 
 @app.route("/<path:path>")
-def catch_all(path):
-    return render_template("coming_soon.html")
+def catch_all(path): return render_template("coming_soon.html")
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     logger.info("Starting app on port %s", port)
-    # Optionally auto-start worker
+    # start worker automatically on boot (idempotent)
     try:
         Thread(target=start_worker_background, daemon=True).start()
-        logger.info("Worker background thread started on boot (daemon).")
+        logger.info("Background worker requested at boot.")
     except Exception:
-        logger.exception("Failed to start worker automatically on boot.")
+        logger.exception("Auto-start worker failed at boot.")
     app.run(host="0.0.0.0", port=port, debug=False)
