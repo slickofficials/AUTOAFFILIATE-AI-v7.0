@@ -1,4 +1,4 @@
-# app.py — v16 | AutoAffiliate AI | SlickOfficials HQ
+# app.py — v16.1 | AutoAffiliate AI | SlickOfficials HQ
 import os
 import logging
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory
@@ -7,37 +7,30 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from threading import Thread
 from datetime import datetime, timedelta
 
-# Import worker control functions (ensure worker.py exists)
+# worker control functions (make sure worker.py sits next to this file)
 from worker import start_worker_background, refresh_all_sources, enqueue_manual_link
 
-# ---------------------
-# Logging / config
-# ---------------------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("app")
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 app.secret_key = os.getenv("SECRET_KEY", "slickofficials_hq_2025")
 Compress(app)
 
 COMPANY = os.getenv("COMPANY_NAME", "SlickOfficials HQ | Amson Multi Global LTD")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@slickofficials.com")
 
-# === DB / REDIS / OPENAI placeholders (worker handles heavy lifting) ===
-DB_URL = os.getenv("DATABASE_URL")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
-# === LOGIN CONFIG ===
+# Login config
 ALLOWED_EMAIL = os.getenv("ALLOWED_EMAIL", "admin@example.com")
 ADMIN_PASS = os.getenv("ADMIN_PASS", "12345")
 
-# === LOGIN TRACKING ===
+# Lockout config
 failed_logins = {}
 LOCKOUT_DURATION = timedelta(hours=24)
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "10"))
 
-# === FLASK-LOGIN ===
+# Flask-Login
 class User(UserMixin):
     def __init__(self, email):
         self.id = email
@@ -52,7 +45,7 @@ def load_user(user_id):
         return User(user_id)
     return None
 
-# === STATIC FILES ===
+# Static helpers
 @app.route("/sitemap.xml")
 def sitemap():
     return send_from_directory(".", "sitemap.xml")
@@ -61,7 +54,7 @@ def sitemap():
 def robots():
     return send_from_directory(".", "robots.txt")
 
-# === BASIC ROUTES ===
+# Routes
 @app.route("/")
 def index():
     return render_template("welcome.html", company=COMPANY, title="Welcome")
@@ -70,13 +63,11 @@ def index():
 def coming_soon():
     return render_template("coming_soon.html", company=COMPANY, title="Coming Soon")
 
-# === LOGIN ===
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
         return render_template("login.html", company=COMPANY, title="Private Login")
 
-    # safe access: accept email OR username
     email = (request.form.get("email") or request.form.get("username") or "").strip().lower()
     password = request.form.get("password", "")
 
@@ -96,17 +87,13 @@ def login():
         return render_template("login.html", company=COMPANY, title="Private Login")
 
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
-        # success
         if client_ip in failed_logins:
             del failed_logins[client_ip]
         user = User(email)
         login_user(user)
-        # try to notify via worker-level alert (worker.send_alert will also notify)
-        try:
-            # call worker refresh or alert if available
-            Thread(target=lambda: refresh_all_sources(), daemon=True).start()
-        except Exception:
-            logger.debug("Unable to trigger refresh after login (non-fatal).")
+        logger.info("Login success for %s", email)
+        # start a refresh in background (non-blocking)
+        Thread(target=lambda: refresh_all_sources(), daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
         failed_logins[client_ip]["count"] += 1
@@ -120,13 +107,15 @@ def login():
             flash(f"Invalid credentials. {left} attempts left.")
         return render_template("login.html", company=COMPANY, title="Private Login")
 
-# === DASHBOARD ===
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    # Read summary stats from DB; swallow errors
+    posts_sent = revenue = referrals = 0
     try:
         import psycopg
         from psycopg.rows import dict_row
+        DB_URL = os.getenv("DATABASE_URL")
         conn = psycopg.connect(DB_URL, row_factory=dict_row)
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) as post_count FROM posts WHERE status='sent'")
@@ -138,48 +127,36 @@ def dashboard():
         conn.close()
     except Exception as e:
         logger.exception("DB read error on dashboard: %s", e)
-        posts_sent = revenue = referrals = 0
-
-    return render_template(
-        "dashboard.html",
-        posts_sent=posts_sent,
-        revenue=revenue,
-        referrals=referrals,
-        company=COMPANY,
-        title="Dashboard | $10M Empire"
-    )
-
-# === LOGOUT / PRIVACY / HEALTH ===
-@app.route("/logout")
-@login_required
-def logout():
-    try:
-        # optionally trigger an alert via worker
-        Thread(target=lambda: refresh_all_sources(), daemon=True).start()
-    except Exception:
-        pass
-    logout_user()
-    return redirect(url_for("index"))
+    return render_template("dashboard.html",
+                           posts_sent=posts_sent,
+                           revenue=revenue,
+                           referrals=referrals,
+                           company=COMPANY,
+                           title="Dashboard | $10M Empire")
 
 @app.route("/privacy")
 def privacy():
     return render_template("privacy.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Privacy Policy")
 
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("index"))
+
 @app.route("/health")
 def health():
     return jsonify({"ok": True, "ts": datetime.utcnow().isoformat()}), 200
 
-# === CONTROL ENDPOINTS for worker ===
+# Control endpoints
 @app.route("/start", methods=["GET", "POST"])
 def start():
-    """Start the worker background thread (idempotent)."""
     Thread(target=start_worker_background, daemon=True).start()
-    logger.info("Start endpoint invoked — worker thread requested.")
+    logger.info("Start invoked — worker start requested.")
     return jsonify({"status": "worker_start_requested"}), 202
 
 @app.route("/refresh", methods=["POST"])
 def refresh():
-    """Force immediate pull from all affiliate sources."""
     try:
         count = refresh_all_sources()
         return jsonify({"status": "ok", "pulled_saved": count}), 200
@@ -189,7 +166,6 @@ def refresh():
 
 @app.route("/enqueue", methods=["POST"])
 def enqueue():
-    """Manually enqueue a single URL for posting. JSON body: { "url": "<url>" }"""
     data = request.get_json() or {}
     url = data.get("url")
     if not url:
@@ -201,7 +177,6 @@ def enqueue():
         logger.exception("Enqueue failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# === Error handlers ===
 @app.errorhandler(404)
 def not_found(e):
     return render_template("coming_soon.html"), 404
@@ -210,14 +185,13 @@ def not_found(e):
 def catch_all(path):
     return render_template("coming_soon.html")
 
-# === MAIN ===
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     logger.info("Starting app on port %s", port)
-    # Optionally start worker automatically when app boots
+    # Optionally auto-start worker
     try:
         Thread(target=start_worker_background, daemon=True).start()
-        logger.info("Background worker thread started on boot (daemon).")
+        logger.info("Worker background thread started on boot (daemon).")
     except Exception:
         logger.exception("Failed to start worker automatically on boot.")
     app.run(host="0.0.0.0", port=port, debug=False)
