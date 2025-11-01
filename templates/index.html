@@ -1,100 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Welcome | {{ company }}</title>
-    <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@500;700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #000;
-            --text: #f5f5f7;
-            --accent: #00d4ff;
-            --card: rgba(30,30,30,0.7);
-            --link: #00d4ff;
-        }
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: 'SF Pro Display', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 20px;
-        }
-        .logo {
-            font-size: 3.5rem;
-            font-weight: 800;
-            background: linear-gradient(90deg, #00d4ff, #00ff9d);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 16px;
-        }
-        h1 {
-            font-size: 2.8rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-        }
-        p {
-            font-size: 1.3rem;
-            max-width: 600px;
-            margin: 0 auto 40px;
-            color: #aaa;
-            line-height: 1.6;
-        }
-        .btn {
-            padding: 18px 50px;
-            background: linear-gradient(135deg, #00d4ff, #00ff9d);
-            color: #000;
-            font-weight: 700;
-            font-size: 1.3rem;
-            border-radius: 16px;
-            text-decoration: none;
-            display: inline-block;
-            box-shadow: 0 10px 30px rgba(0,212,255,0.3);
-            transition: all 0.3s ease;
-        }
-        .btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 15px 40px rgba(0,212,255,0.4);
-        }
-        footer {
-            margin-top: 60px;
-            color: #666;
-            font-size: 0.9rem;
-        }
-        footer a {
-            color: var(--link);
-            text-decoration: none;
-            margin: 0 8px;
-            font-weight: 500;
-        }
-        footer a:hover {
-            text-decoration: underline;
-        }
-        @media (max-width: 768px) {
-            .logo { font-size: 2.8rem; }
-            h1 { font-size: 2.2rem; }
-            .btn { font-size: 1.1rem; padding: 16px 40px; }
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome | {{ company }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@500;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #000;
+      --bg-light: #f8f9fb;
+      --text-dark: #f5f5f7;
+      --text-light: #0a0a0a;
+      --accent1: #00d4ff;
+      --accent2: #00ff9d;
+      --card-dark: rgba(30,30,30,0.7);
+      --card-light: rgba(255,255,255,0.8);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--text-dark);
+      font-family: 'SF Pro Display', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      transition: background 0.5s, color 0.5s;
+      padding: 30px;
+    }
+
+    .logo {
+      font-size: 3.6rem;
+      font-weight: 800;
+      background: linear-gradient(90deg, var(--accent1), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 18px;
+      letter-spacing: -1px;
+    }
+
+    h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      letter-spacing: -0.5px;
+    }
+
+    p {
+      font-size: 1.2rem;
+      max-width: 600px;
+      margin: 0 auto 45px;
+      color: #a7a7a7;
+      line-height: 1.7;
+    }
+
+    .btn {
+      padding: 16px 50px;
+      background: linear-gradient(135deg, var(--accent1), var(--accent2));
+      color: #000;
+      font-weight: 700;
+      font-size: 1.3rem;
+      border-radius: 18px;
+      text-decoration: none;
+      display: inline-block;
+      box-shadow: 0 10px 30px rgba(0,212,255,0.3);
+      transition: all 0.3s ease;
+    }
+    .btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 40px rgba(0,212,255,0.5);
+    }
+
+    footer {
+      margin-top: 60px;
+      color: #777;
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--accent1);
+      text-decoration: none;
+      margin: 0 6px;
+      font-weight: 500;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* === Dark/Light Toggle === */
+    .toggle {
+      position: fixed;
+      top: 20px;
+      right: 25px;
+      background: var(--card-dark);
+      border-radius: 40px;
+      padding: 8px 18px;
+      color: var(--text-dark);
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.4s ease;
+    }
+    .light-mode {
+      background: var(--bg-light);
+      color: var(--text-light);
+    }
+    .light-mode .toggle {
+      background: var(--card-light);
+      color: var(--text-light);
+    }
+
+    @media (max-width: 768px) {
+      .logo { font-size: 2.8rem; }
+      h1 { font-size: 2.2rem; }
+      .btn { font-size: 1.1rem; padding: 14px 36px; }
+    }
+  </style>
 </head>
+
 <body>
-    <div class="logo">AUTOAFFILIATE AI</div>
-    <h1>Build Your Empire on Autopilot</h1>
-    <p>500 AI Shorts Daily • X • IG • TikTok • YouTube • White-Label SaaS • Paystack Auto-Charge</p>
-    <a href="/login" class="btn">GET STARTED</a>
-    
-    <footer>
-        <p>
-            © 2025 {{ company }}<br>
-            <a href="/privacy">Privacy Policy</a> • 
-            <a href="/terms">Terms of Service</a>
-        </p>
-    </footer>
+  <div class="toggle" onclick="toggleTheme()">☀️ Light Mode</div>
+  <div class="logo">AUTOAFFILIATE AI</div>
+  <h1>Build Your Empire on Autopilot</h1>
+  <p>500 AI Shorts Daily • X • IG • TikTok • YouTube • White-Label SaaS • Paystack Auto-Charge</p>
+  <a href="/login" class="btn">GET STARTED</a>
+
+  <footer>
+    <p>
+      ©️ 2025 {{ company }}<br>
+      <a href="/privacy">Privacy Policy</a> •
+      <a href="/terms">Terms of Service</a>
+    </p>
+  </footer>
+
+  <script>
+    function toggleTheme() {
+      const body = document.body;
+      const toggle = document.querySelector('.toggle');
+      body.classList.toggle('light-mode');
+      if (body.classList.contains('light-mode')) {
+        toggle.innerHTML = '🌙 Dark Mode';
+      } else {
+        toggle.innerHTML = '☀️ Light Mode';
+      }
+    }
+  </script>
 </body>
 </html>
