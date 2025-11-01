@@ -1,4 +1,15 @@
-# worker.py — v16.1 FINAL
+# worker.py — v17 FINAL
+"""
+Full worker:
+- Pulls Awin & Rakuten deeplinks (official-style when token provided)
+- Saves to Postgres (idempotent)
+- Generates captions with OpenAI
+- Generates short HeyGen videos (optional)
+- Posts to FB/IG/Twitter
+- Sends Twilio WhatsApp alerts
+- Background loop with refresh and posting intervals
+"""
+
 import os
 import time
 import logging
@@ -15,27 +26,31 @@ logger = logging.getLogger("worker")
 # Environment
 DB_URL = os.getenv("DATABASE_URL")
 
-# Awin / Rakuten
-AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID")          # numeric publisher id (for redirect method)
-AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN")                # if you have AWIN API token (not required for redirect)
+# AWIN
+AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID")
+AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN")  # optional: use official AWIN Generate Link API if available
+
+# RAKUTEN
 RAKUTEN_CLIENT_ID = os.getenv("RAKUTEN_CLIENT_ID")
 RAKUTEN_SECURITY_TOKEN = os.getenv("RAKUTEN_SECURITY_TOKEN")  # optional
 
-# Social tokens
+# Social
 FB_PAGE_ID = os.getenv("FB_PAGE_ID")
 FB_TOKEN = os.getenv("FB_ACCESS_TOKEN")
 IG_USER_ID = os.getenv("IG_USER_ID")
 IG_TOKEN = os.getenv("IG_TOKEN")
+
 TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
 
-# AI & HeyGen
+# AI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
 
-# Twilio alerts
+# Twilio
 TWILIO_SID = os.getenv("TWILIO_SID")
 TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
 YOUR_WHATSAPP = os.getenv("YOUR_WHATSAPP")
@@ -46,7 +61,7 @@ POST_INTERVAL_SECONDS = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
 SLEEP_ON_EMPTY = int(os.getenv("SLEEP_ON_EMPTY", "1800"))
 
 # -----------------------
-# Utilities
+# Helpers
 # -----------------------
 def retry(times=3, delay=2):
     def deco(fn):
@@ -58,8 +73,8 @@ def retry(times=3, delay=2):
                     return fn(*a, **k)
                 except Exception as e:
                     last = e
-                    logger.warning("Retry %s/%s for %s after error: %s", i + 1, times, fn.__name__, e)
-                    time.sleep(delay * (i + 1))
+                    logger.warning("Retry %s/%s for %s after error: %s", i+1, times, fn.__name__, e)
+                    time.sleep(delay * (i+1))
             logger.exception("Function %s failed after %s attempts", fn.__name__, times)
             raise last
         return wrapper
@@ -81,7 +96,7 @@ def send_alert(title, body):
             client.messages.create(from_="whatsapp:+14155238886", body=msg, to=YOUR_WHATSAPP)
             logger.info("WhatsApp alert sent")
         except Exception as e:
-            logger.exception("Failed sending Twilio alert: %s", e)
+            logger.exception("Twilio alert failed: %s", e)
     else:
         logger.debug("Twilio not configured; alert payload: %s", msg)
 
@@ -102,77 +117,107 @@ def save_links_to_db(links, source="affiliate"):
             )
             added += 1
         except Exception as e:
-            logger.debug("Insert error for %s: %s", link, e)
+            logger.debug("Insert conflict/error for %s: %s", link, e)
     conn.commit()
     conn.close()
-    logger.info("Attempted to save %s links from %s (approx added=%s)", len(links), source, added)
+    logger.info("Attempted save %s links from %s (approx added=%s)", len(links), source, added)
     return added
 
 # -----------------------
-# Awin deeplink pull
+# AWIN pull (official style if token present)
 # -----------------------
 @retry(times=3, delay=2)
-def pull_awin_deeplinks():
-    """
-    Preferred: If you have AWIN API tokens and official endpoints, replace this function
-    with the official generate-link endpoint per AWIN docs. As a universal fallback,
-    the 'cread.php' redirect produces a publisher deeplink which we capture via requests.
-    """
+def pull_awin_deeplinks(limit=5):
     results = []
-    if not AWIN_PUBLISHER_ID:
-        logger.debug("AWIN_PUBLISHER_ID not set — skipping")
-        return results
-    try:
-        url = f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid=0&clickref=bot"
-        r = requests.get(url, allow_redirects=True, timeout=12)
-        final = r.url
-        logger.debug("AWIN pull final=%s status=%s", final, r.status_code)
-        if final:
-            results.append(final)
-    except Exception as e:
-        logger.exception("AWIN pull error: %s", e)
+    if AWIN_API_TOKEN:
+        # Attempt official AWIN Link Generator (example flow — adapt if AWIN docs differ)
+        try:
+            headers = {"Authorization": f"Bearer {AWIN_API_TOKEN}", "Accept": "application/json"}
+            # AWIN may provide endpoints to generate links to merchants; placeholder endpoint below:
+            endpoint = f"https://api.awin.com/publishers/{AWIN_PUBLISHER_ID}/links"
+            # This request body is an example — adjust to AWIN's API contract if needed
+            payload = {"limit": limit}
+            r = requests.get(endpoint, headers=headers, params=payload, timeout=12)
+            if r.ok:
+                data = r.json()
+                # flatten possible link fields - adapt to actual response keys
+                for item in data.get("links", [])[:limit]:
+                    url = item.get("url") or item.get("deeplink")
+                    if url:
+                        results.append(url)
+                logger.info("AWIN API pulled %s links", len(results))
+                return results
+            else:
+                logger.warning("AWIN API responded %s: %s", r.status_code, r.text[:200])
+        except Exception as e:
+            logger.exception("AWIN API error: %s", e)
+    # Fallback: use redirect method to produce a publisher deeplink
+    if AWIN_PUBLISHER_ID:
+        try:
+            url = f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid=0&clickref=bot"
+            r = requests.get(url, allow_redirects=True, timeout=12)
+            final = r.url
+            if final:
+                results.append(final)
+                logger.info("AWIN redirect produced link")
+        except Exception as e:
+            logger.exception("AWIN redirect error: %s", e)
     return results
 
 # -----------------------
-# Rakuten deeplink pull
+# Rakuten pull (official style if token present)
 # -----------------------
 @retry(times=3, delay=2)
-def pull_rakuten_deeplinks():
+def pull_rakuten_deeplinks(limit=5):
     results = []
-    if not RAKUTEN_CLIENT_ID:
-        logger.debug("RAKUTEN_CLIENT_ID not set — skipping Rakuten")
-        return results
-    try:
-        url = f"https://click.linksynergy.com/deeplink?id={RAKUTEN_CLIENT_ID}&mid=0&murl=https://example.com&afsrc=1"
-        r = requests.get(url, allow_redirects=True, timeout=12)
-        final = r.url
-        logger.debug("Rakuten pull final=%s status=%s", final, r.status_code)
-        if final:
-            results.append(final)
-    except Exception as e:
-        logger.exception("Rakuten pull error: %s", e)
+    # If Rakuten has a webservices token, use official endpoints (placeholder example)
+    if RAKUTEN_SECURITY_TOKEN:
+        try:
+            headers = {"Authorization": f"Bearer {RAKUTEN_SECURITY_TOKEN}"}
+            # placeholder endpoint (adapt to Rakuten docs if you have a product/offers endpoint)
+            endpoint = f"https://api.rakutenadvertising.com/link/v1/products"
+            params = {"limit": limit}
+            r = requests.get(endpoint, headers=headers, params=params, timeout=12)
+            if r.ok:
+                data = r.json()
+                for item in data.get("items", [])[:limit]:
+                    url = item.get("url") or item.get("deepLink")
+                    if url:
+                        results.append(url)
+                logger.info("Rakuten API pulled %s links", len(results))
+                return results
+            else:
+                logger.warning("Rakuten API responded %s: %s", r.status_code, r.text[:200])
+        except Exception as e:
+            logger.exception("Rakuten API error: %s", e)
+    # Fallback: linksynergy redirect
+    if RAKUTEN_CLIENT_ID:
+        try:
+            url = f"https://click.linksynergy.com/deeplink?id={RAKUTEN_CLIENT_ID}&mid=0&murl=https://example.com&afsrc=1"
+            r = requests.get(url, allow_redirects=True, timeout=12)
+            final = r.url
+            if final:
+                results.append(final)
+                logger.info("Rakuten redirect produced link")
+        except Exception as e:
+            logger.exception("Rakuten redirect error: %s", e)
     return results
 
 # -----------------------
-# HeyGen optional video generation
+# HeyGen video generation
 # -----------------------
 def generate_heygen_video(caption):
-    """Return video URL or None. Requires HEYGEN_API_KEY in env."""
     if not HEYGEN_API_KEY:
         return None
     try:
         headers = {"Authorization": f"Bearer {HEYGEN_API_KEY}", "Content-Type": "application/json"}
-        payload = {
-            "script": caption,
-            "voice": "en_us_male1",
-            "avatar": "default",
-            "output_format": "mp4"
-        }
+        payload = {"script": caption, "voice": "en_us_male1", "avatar": "default", "output_format": "mp4"}
         r = requests.post("https://api.heygen.com/v1/video/generate", json=payload, headers=headers, timeout=60)
-        if r.status_code == 200:
+        if r.ok:
             data = r.json()
             return data.get("video_url") or data.get("result_url")
-        logger.warning("HeyGen response %s: %s", r.status_code, r.text[:200])
+        else:
+            logger.warning("HeyGen response %s: %s", r.status_code, r.text[:200])
     except Exception as e:
         logger.exception("HeyGen error: %s", e)
     return None
@@ -182,19 +227,23 @@ def generate_heygen_video(caption):
 # -----------------------
 def post_facebook(message):
     if not FB_PAGE_ID or not FB_TOKEN:
+        logger.debug("Facebook not configured")
         return False
     try:
         url = f"https://graph.facebook.com/v20.0/{FB_PAGE_ID}/feed"
         params = {"access_token": FB_TOKEN, "message": message}
         r = requests.post(url, params=params, timeout=15)
-        logger.info("FB response %s", r.status_code)
-        return r.status_code == 200
+        logger.info("FB post status=%s", r.status_code)
+        if r.status_code == 200:
+            return True
+        logger.warning("FB response: %s", r.text[:200])
     except Exception as e:
-        logger.exception("FB post failed: %s", e)
-        return False
+        logger.exception("FB error: %s", e)
+    return False
 
 def post_instagram(caption):
     if not IG_USER_ID or not IG_TOKEN:
+        logger.debug("Instagram not configured")
         return False
     try:
         image_url = "https://i.imgur.com/airmax270.jpg"
@@ -206,22 +255,37 @@ def post_instagram(caption):
         creation_id = create_resp.json().get("id")
         publish_resp = requests.post(f"https://graph.facebook.com/v20.0/{IG_USER_ID}/media_publish",
                                      params={"creation_id": creation_id, "access_token": IG_TOKEN}, timeout=15)
-        logger.info("IG publish status %s", publish_resp.status_code)
+        logger.info("IG publish status=%s", publish_resp.status_code)
         return publish_resp.status_code == 200
     except Exception as e:
-        logger.exception("IG post failed: %s", e)
-        return False
+        logger.exception("IG error: %s", e)
+    return False
 
 def post_twitter(text):
-    if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
-        return False
+    # prefer v2 client create_tweet if bearer or OAuth2 app provided, else fallback to OAuth1.0a
     try:
-        import tweepy
-        auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
-        api = tweepy.API(auth)
-        api.update_status(text)
-        logger.info("Tweet posted")
-        return True
+        if TWITTER_BEARER_TOKEN:
+            # use tweepy.Client.create_tweet
+            import tweepy
+            client = tweepy.Client(bearer_token=TWITTER_BEARER_TOKEN,
+                                   consumer_key=TWITTER_API_KEY,
+                                   consumer_secret=TWITTER_API_SECRET,
+                                   access_token=TWITTER_ACCESS_TOKEN,
+                                   access_token_secret=TWITTER_ACCESS_SECRET)
+            client.create_tweet(text=text)
+            logger.info("Tweet posted via Client.create_tweet")
+            return True
+        else:
+            # fallback to OAuth1
+            if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
+                logger.debug("Twitter credentials missing")
+                return False
+            import tweepy
+            auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+            api = tweepy.API(auth)
+            api.update_status(status=text)
+            logger.info("Tweet posted via API.update_status")
+            return True
     except Exception as e:
         logger.exception("Twitter post failed: %s", e)
         return False
@@ -235,31 +299,28 @@ def generate_caption(link):
     try:
         import openai
         openai.api_key = OPENAI_API_KEY
-        prompt = f"Write a short promotional caption (1-2 lines) with an emoji and one hashtag for this affiliate link: {link}"
-        # ChatCompletion if available
-        resp = openai.ChatCompletion.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=60
-        )
+        prompt = f"Write a short, punchy promotional caption for this affiliate link: {link}. Include 1 emoji and 1 trending hashtag."
+        resp = openai.ChatCompletion.create(model="gpt-4o-mini", messages=[{"role":"user", "content": prompt}], max_tokens=60)
         caption = resp.choices[0].message.content.strip()
         return caption
     except Exception as e:
-        logger.exception("OpenAI caption generation failed: %s", e)
+        logger.exception("OpenAI failed: %s", e)
         return f"🔥 Hot deal — grab it now: {link}"
 
 # -----------------------
 # High-level flows
 # -----------------------
 def refresh_all_sources():
-    logger.info("Refreshing affiliate sources (Awin + Rakuten)")
+    logger.info("Refreshing affiliate sources")
     links = []
     try:
-        links += pull_awin_deeplinks()
+        a = pull_awin_deeplinks(limit=5)
+        links += a
     except Exception:
         logger.exception("AWIN pull failed")
     try:
-        links += pull_rakuten_deeplinks()
+        r = pull_rakuten_deeplinks(limit=5)
+        links += r
     except Exception:
         logger.exception("Rakuten pull failed")
     if links:
@@ -270,8 +331,8 @@ def refresh_all_sources():
     return saved
 
 def enqueue_manual_link(url):
-    added = save_links_to_db([url], source="manual")
-    return {"inserted": added, "url": url}
+    inserted = save_links_to_db([url], source="manual")
+    return {"inserted": inserted, "url": url}
 
 def post_next_pending():
     conn, cur = get_db_conn()
@@ -279,54 +340,62 @@ def post_next_pending():
     row = cur.fetchone()
     conn.close()
     if not row:
-        logger.debug("No pending rows")
+        logger.debug("No pending")
         return False
 
     url = row["url"]
     caption = generate_caption(url)
-    # optional HeyGen video
     video_url = generate_heygen_video(caption) if HEYGEN_API_KEY else None
     if video_url:
-        caption_with_video = f"{caption}\nWatch: {video_url}\n{url}"
+        caption_full = f"{caption}\nWatch: {video_url}\n{url}"
     else:
-        caption_with_video = f"{caption}\n{url}"
+        caption_full = f"{caption}\n{url}"
 
-    logger.info("Posting URL %s with caption %s", url, caption[:80])
+    logger.info("Posting %s", url)
+    success = False
+    try:
+        if post_facebook(caption_full):
+            success = True
+    except Exception:
+        logger.exception("FB post error")
+    try:
+        if post_instagram(caption_full):
+            success = True
+    except Exception:
+        logger.exception("IG post error")
+    try:
+        if post_twitter(caption + " " + url):
+            success = True
+    except Exception:
+        logger.exception("Twitter post error")
 
-    success = any([
-        post_facebook(caption_with_video),
-        post_instagram(caption_with_video),
-        post_twitter(caption + " " + url)
-    ])
-
-    # update DB
     conn, cur = get_db_conn()
-    cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE url=%s",
-                ("sent" if success else "failed", datetime.now(timezone.utc), url))
+    cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE url=%s", ("sent" if success else "failed", datetime.now(timezone.utc), url))
     conn.commit()
     conn.close()
 
     if success:
-        send_alert("POSTED", f"{url[:100]}")
+        send_alert("POSTED", f"{url[:120]}")
     else:
-        send_alert("POST FAILED", f"{url[:100]}")
+        send_alert("POST FAILED", f"{url[:120]}")
+
     return success
 
 # -----------------------
-# Background loop
+# Background runner
 # -----------------------
 _worker_running = False
 
 def start_worker_background():
     global _worker_running
     if _worker_running:
-        logger.info("Worker already running — ignoring start.")
+        logger.info("Worker already running")
         return
     if not DB_URL:
-        logger.error("DATABASE_URL not set — worker will not start")
+        logger.error("DATABASE_URL missing; worker won't start")
         return
     _worker_running = True
-    logger.info("Worker background loop starting.")
+    logger.info("Worker starting")
     send_alert("WORKER START", "AutoAffiliate worker started")
 
     next_pull = datetime.now(timezone.utc) - timedelta(seconds=5)
@@ -337,21 +406,16 @@ def start_worker_background():
             if now >= next_pull:
                 try:
                     refresh_all_sources()
-                except Exception as e:
-                    logger.exception("Periodic refresh failed: %s", e)
+                except Exception:
+                    logger.exception("Periodic refresh failed")
                 next_pull = now + timedelta(minutes=PULL_INTERVAL_MINUTES)
 
-            posted = False
-            try:
-                posted = post_next_pending()
-            except Exception as e:
-                logger.exception("Posting loop error: %s", e)
-
+            posted = post_next_pending()
             if posted:
-                logger.info("Posted an item — sleeping %s seconds", POST_INTERVAL_SECONDS)
+                logger.info("Posted; sleeping %s seconds", POST_INTERVAL_SECONDS)
                 time.sleep(POST_INTERVAL_SECONDS)
             else:
-                logger.debug("No posts — sleeping %s seconds", SLEEP_ON_EMPTY)
+                logger.debug("No post; sleeping %s seconds", SLEEP_ON_EMPTY)
                 time.sleep(SLEEP_ON_EMPTY)
 
         except Exception as e:
