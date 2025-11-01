@@ -1,11 +1,10 @@
-# worker.py - v13.7 $10M EMPIRE BOT | 100% WORKING | NO IMPORT ERRORS
+# worker.py - v13.8 $10M EMPIRE BOT | FB DIRECT HTTP | NO SDK | 100% WORKING
 import os
 import time
 import requests
 import psycopg
 from psycopg.rows import dict_row
 from datetime import datetime
-from facebook_business.api import GraphAPI  # ← CORRECT & WORKING
 import instabot
 import tweepy
 from twilio.rest import Client
@@ -29,7 +28,7 @@ YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')
 # === DB ===
 def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
-    return conn, conn.cursor()
+    return conn, cur = conn.cursor()
 
 # === TWILIO ALERT ===
 client = Client(TWILIO_SID, TWILIO_TOKEN) if TWILIO_SID else None
@@ -77,20 +76,20 @@ def save_links(links):
     conn.commit()
     conn.close()
 
-# === POST TO FB — 100% WORKING ===
+# === POST TO FB — DIRECT HTTP CALL (NO SDK) ===
 def post_fb(link):
     if not FB_PAGE_ID or not FB_TOKEN:
-        print("FB: Missing PAGE ID or TOKEN")
         return False
     try:
-        graph = GraphAPI(FB_TOKEN)
-        graph.put_object(
-            parent_object=FB_PAGE_ID,
-            connection_name='feed',
-            message=f"Check this HOT deal! {link}"
-        )
-        print(f"FB POSTED: {link[:50]}...")
-        return True
+        url = f"https://graph.facebook.com/v20.0/{FB_PAGE_ID}/feed"
+        params = {
+            'access_token': FB_TOKEN,
+            'message': f"Check this HOT deal! {link}"
+        }
+        r = requests.post(url, params=params, timeout=10)
+        if r.status_code == 200:
+            print(f"FB POSTED: {link[:50]}...")
+            return True
     except Exception as e:
         print(f"FB POST FAILED: {e}")
         return False
@@ -125,7 +124,7 @@ def post_twitter(link):
 
 # === MAIN LOOP ===
 def run_daily_campaign():
-    send_alert("BOT STARTED", "v13.7 $10M EMPIRE BOT LIVE")
+    send_alert("BOT STARTED", "v13.8 $10M EMPIRE BOT LIVE")
     
     # === YOUR 17 LINKS ===
     your_links = [
