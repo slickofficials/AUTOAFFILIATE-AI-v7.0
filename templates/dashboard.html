@@ -1,146 +1,207 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard | AutoAffiliate AI</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title or 'Dashboard' }} — {{ company }}</title>
+  <!-- Tailwind CDN for quick deployment -->
+  <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    :root {
-      --bg-dark: radial-gradient(circle at 50% 30%, #101010, #1b1b1b 80%);
-      --bg-light: radial-gradient(circle at 50% 30%, #f2f2f2, #e0e0e0 80%);
-      --text-dark: #eaeaea;
-      --text-light: #111;
-      --accent: #00b4d8;
-    }
-
-    body {
-      margin: 0;
-      height: 100vh;
-      font-family: -apple-system, "SF Pro Display", sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-dark);
-      display: flex;
-      flex-direction: column;
-      transition: all 0.4s ease;
-    }
-
-    body.light-mode {
-      background: var(--bg-light);
-      color: var(--text-light);
-    }
-
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 1rem 2rem;
-      background: rgba(255,255,255,0.05);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 0 20px rgba(0,0,0,0.3);
-    }
-
-    h1 {
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .theme-toggle {
-      background: rgba(255,255,255,0.1);
-      border: none;
-      border-radius: 50%;
-      width: 42px;
-      height: 42px;
-      color: var(--accent);
-      font-size: 1.3em;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-
-    body.light-mode .theme-toggle {
-      background: rgba(255,255,255,0.5);
-      color: #111;
-    }
-
-    .dashboard {
-      flex: 1;
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-      gap: 1.5rem;
-      padding: 2rem;
-    }
-
-    .card {
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(16px);
-      border-radius: 15px;
-      padding: 1.5rem;
-      box-shadow: 0 0 25px rgba(0, 180, 216, 0.2);
-      transition: 0.3s;
-    }
-
-    .card:hover {
-      transform: translateY(-5px);
-      box-shadow: 0 0 35px rgba(0, 180, 216, 0.4);
-    }
-
-    body.light-mode .card {
-      background: rgba(255,255,255,0.6);
-      box-shadow: 0 0 25px rgba(0,0,0,0.1);
-    }
-
-    footer {
-      text-align: center;
-      padding: 1rem;
-      font-size: 0.9em;
-      opacity: 0.7;
-    }
-
-    footer a {
-      color: var(--accent);
-      text-decoration: none;
-    }
-
-    footer a:hover {
-      text-decoration: underline;
-    }
+    body { background: radial-gradient(circle at 10% 10%, #071022 0%, #05060a 60%); }
+    .glass { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.04); backdrop-filter: blur(8px); }
+    .neon { box-shadow: 0 8px 30px rgba(6,182,212,0.08); }
+    .orb { width:54px; height:54px; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#041426; }
+    .pulse { animation: pulse 2.6s infinite; }
+    @keyframes pulse { 0%{ transform:scale(1);}50%{transform:scale(1.08);}100%{transform:scale(1);} }
+    .mystic { background: linear-gradient(45deg, rgba(124,58,237,0.12), rgba(6,182,212,0.06)); border-radius:12px; padding:10px; }
   </style>
 </head>
-<body>
-  <header>
-    <h1>AutoAffiliate AI Dashboard</h1>
-    <button class="theme-toggle" id="themeToggle">☀️</button>
-  </header>
+<body class="text-white antialiased">
+  <div class="max-w-6xl mx-auto p-6">
+    <header class="flex items-center justify-between mb-6">
+      <div class="flex items-center gap-4">
+        <div class="w-14 h-14 rounded-full bg-gradient-to-br from-slate-800 via-slate-700 to-slate-600 flex items-center justify-center neon">
+          <span class="text-2xl font-extrabold">SF</span>
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold">SlickOfficials — Command Core</h1>
+          <p class="text-sm text-slate-300">AutoAffiliate AI · Metallic Mystique</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="text-right">
+          <div class="text-xs text-slate-400">Next post in</div>
+          <div id="nextCountdown" class="text-lg font-mono text-cyan-300">--:--:--</div>
+        </div>
+        <button id="refreshBtn" class="px-4 py-2 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600">Refresh</button>
+        <button id="postNowBtn" class="px-4 py-2 rounded-lg bg-gradient-to-tr from-pink-500 to-violet-600">Post Now</button>
+        <a href="/logout" class="px-3 py-2 rounded-lg bg-white/5">Logout</a>
+      </div>
+    </header>
 
-  <div class="dashboard">
-    <div class="card">
-      <h3>📊 Analytics Overview</h3>
-      <p>Track your affiliate conversions, leads, and engagement in real-time.</p>
-    </div>
-    <div class="card">
-      <h3>🤖 AI Campaigns</h3>
-      <p>Manage your automated AI-driven ad campaigns for max performance.</p>
-    </div>
-    <div class="card">
-      <h3>💰 Earnings Report</h3>
-      <p>Monitor your affiliate income across all connected platforms.</p>
-    </div>
-    <div class="card">
-      <h3>⚙️ Integrations</h3>
-      <p>Connect APIs like PayPal, Stripe, and Mailchimp seamlessly.</p>
-    </div>
+    <main class="grid grid-cols-12 gap-6">
+      <section class="col-span-8 glass p-5 rounded-2xl">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-lg font-semibold">Health & Status</h2>
+          <div class="text-sm text-slate-400">Live · Auto-refresh 10s</div>
+        </div>
+
+        <div class="flex gap-4 items-center mb-6">
+          <div class="flex items-center gap-3">
+            <div class="orb bg-cyan-300 pulse">A</div>
+            <div>
+              <div class="font-medium">AWIN</div>
+              <div id="awinStatus" class="text-xs text-slate-300">—</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="orb bg-indigo-300 pulse">R</div>
+            <div>
+              <div class="font-medium">Rakuten</div>
+              <div id="rakutenStatus" class="text-xs text-slate-300">—</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="orb bg-amber-300 pulse">O</div>
+            <div>
+              <div class="font-medium">OpenAI</div>
+              <div id="openaiStatus" class="text-xs text-slate-300">—</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="orb bg-pink-300 pulse">H</div>
+            <div>
+              <div class="font-medium">HeyGen</div>
+              <div id="heygenStatus" class="text-xs text-slate-300">—</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-3">
+            <div class="orb bg-emerald-300 pulse">T</div>
+            <div>
+              <div class="font-medium">Twilio</div>
+              <div id="twilioStatus" class="text-xs text-slate-300">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="mystic">
+            <div class="text-sm text-slate-300 mb-2">Posts & Clicks (recent)</div>
+            <div id="miniChart" class="h-44 bg-black/20 rounded-md"></div>
+          </div>
+          <div class="mystic">
+            <div class="text-sm text-slate-300 mb-2">Platform Breakdown</div>
+            <div id="platformBreakdown" class="h-44 bg-black/20 rounded-md"></div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="col-span-4 glass p-4 rounded-2xl">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="p-3 rounded-lg bg-white/3 text-center">
+            <div class="text-xs text-slate-300">Total Links</div>
+            <div id="totalLinks" class="text-2xl font-bold text-cyan-200">—</div>
+          </div>
+          <div class="p-3 rounded-lg bg-white/3 text-center">
+            <div class="text-xs text-slate-300">Pending</div>
+            <div id="pendingLinks" class="text-2xl font-bold text-amber-200">—</div>
+          </div>
+          <div class="p-3 rounded-lg bg-white/3 text-center">
+            <div class="text-xs text-slate-300">Sent</div>
+            <div id="sentLinks" class="text-2xl font-bold text-emerald-200">—</div>
+          </div>
+          <div class="p-3 rounded-lg bg-white/3 text-center">
+            <div class="text-xs text-slate-300">Clicks</div>
+            <div id="clicksTotal" class="text-2xl font-bold text-pink-200">—</div>
+          </div>
+        </div>
+
+        <div class="mt-4">
+          <div class="text-sm text-slate-300 mb-2">Top Links</div>
+          <div id="topLinks" class="space-y-2 max-h-48 overflow-auto"></div>
+        </div>
+      </aside>
+
+      <section class="col-span-12 glass p-4 rounded-2xl">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="text-lg font-semibold">Recent Posts</h3>
+          <div class="text-sm text-slate-400">Last 10</div>
+        </div>
+        <div id="recentTable" class="overflow-auto max-h-64"></div>
+      </section>
+    </main>
+
+    <footer class="mt-6 text-center text-slate-400">
+      <div class="inline-block px-6 py-3 rounded-3xl glass">✨ Mystical mode engaged — your bot is awake ✨</div>
+    </footer>
   </div>
 
-  <footer>
-    © 2025 AutoAffiliate AI | Powered by 
-    <a href="https://slickofficials.com" target="_blank">Slick Officials</a>  
-    | Support: <a href="mailto:support@slickofficials.com">support@slickofficials.com</a>
-  </footer>
-
   <script>
-    const toggle = document.getElementById("themeToggle");
-    toggle.addEventListener("click", () => {
-      document.body.classList.toggle("light-mode");
-      toggle.textContent = document.body.classList.contains("light-mode") ? "🌙" : "☀️";
+    const api = "/api/stats";
+    async function fetchStats(){
+      try{
+        const res = await fetch(api);
+        if(!res.ok) throw new Error("failed");
+        const j = await res.json();
+        document.getElementById("totalLinks").textContent = j.total_links ?? j.total ?? "—";
+        document.getElementById("pendingLinks").textContent = j.pending ?? "—";
+        document.getElementById("sentLinks").textContent = j.sent ?? "—";
+        document.getElementById("clicksTotal").textContent = j.clicks_total ?? "—";
+        document.getElementById("awinStatus").textContent = j.statuses?.awin ? "online" : "offline";
+        document.getElementById("rakutenStatus").textContent = j.statuses?.rakuten ? "online" : "offline";
+        document.getElementById("openaiStatus").textContent = j.statuses?.openai ? "online" : "offline";
+        document.getElementById("heygenStatus").textContent = j.statuses?.heygen ? "online" : "offline";
+        document.getElementById("twilioStatus").textContent = j.statuses?.twilio ? "online" : "offline";
+        // next countdown
+        const next = j.next_post_in_seconds ?? 0;
+        const el = document.getElementById("nextCountdown");
+        const h = String(Math.floor(next/3600)).padStart(2,'0');
+        const m = String(Math.floor((next%3600)/60)).padStart(2,'0');
+        const s = String(Math.floor(next%60)).padStart(2,'0');
+        el.textContent = `${h}:${m}:${s}`;
+        // top links
+        const topEl = document.getElementById("topLinks");
+        topEl.innerHTML = "";
+        (j.top_links || []).forEach(l=>{
+          const d = document.createElement("div");
+          d.className = "p-2 rounded-md bg-white/5 text-sm";
+          d.innerHTML = `<div class="font-semibold truncate">${l.url}</div><div class="text-xs text-slate-300">Clicks: ${l.clicks}</div>`;
+          topEl.appendChild(d);
+        });
+        // recent posts table
+        const rt = document.getElementById("recentTable");
+        rt.innerHTML = "";
+        const tbl = document.createElement("table");
+        tbl.className = "min-w-full text-left";
+        const thead = document.createElement("thead");
+        thead.innerHTML = `<tr class="text-xs text-slate-400"><th class="p-2">ID</th><th class="p-2">Link</th><th class="p-2">Status</th><th class="p-2">Posted At</th><th class="p-2">Preview</th></tr>`;
+        tbl.appendChild(thead);
+        const tbody = document.createElement("tbody");
+        (j.recent_posts || []).forEach(p=>{
+          const tr = document.createElement("tr");
+          tr.className = "border-b border-white/5";
+          tr.innerHTML = `<td class="p-2 text-sm">${p.id}</td><td class="p-2 text-sm truncate max-w-[32rem]">${p.url}</td><td class="p-2 text-sm">${p.status}</td><td class="p-2 text-sm">${p.posted_at? new Date(p.posted_at).toLocaleString() : '—'}</td><td class="p-2 text-sm"><a class="underline" target="_blank" href="/r/${p.id}">Preview</a></td>`;
+          tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody);
+        rt.appendChild(tbl);
+      }catch(e){
+        console.error(e);
+      }
+    }
+
+    fetchStats();
+    // poll
+    setInterval(fetchStats, 10000);
+
+    document.getElementById("refreshBtn").addEventListener("click", async ()=>{
+      await fetch("/refresh", { method: "POST" });
+      fetchStats();
+    });
+    document.getElementById("postNowBtn").addEventListener("click", async ()=>{
+      // try to post now: call start endpoint to ensure worker running and then refresh
+      await fetch("/start", { method: "POST" });
+      setTimeout(fetchStats, 2000);
     });
   </script>
 </body>
