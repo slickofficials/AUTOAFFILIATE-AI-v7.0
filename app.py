@@ -51,10 +51,9 @@ def load_user(user_id):
         return User(user_id)
     return None
 
-# Minimal alert helper (use Twilio/env to actually send)
+# Minimal alert helper (app keeps as log; worker sends real Twilio/Telegram)
 def send_alert_stub(title, body):
     logger.info("[ALERT] %s: %s", title, body)
-    # Worker has real Twilio sending; app keeps this as a log
 
 @app.after_request
 def add_security_headers(response):
@@ -120,7 +119,8 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard")
+    # Note: templates/dashboard.html must fetch /api/stats via JS to populate values.
+    return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL)
 
 @app.route("/logout")
 @login_required
@@ -201,7 +201,7 @@ def api_stats():
         # statuses (simple health probes out of DB presence)
         stat["statuses"] = {
             "awin": bool(os.getenv("AWIN_PUBLISHER_ID")),
-            "rakuten": bool(os.getenv("RAKUTEN_CLIENT_ID")),
+            "rakuten": bool(os.getenv("RAKUTEN_CLIENT_ID") or os.getenv("RAKUTEN_CLIENT_ID")),
             "openai": bool(os.getenv("OPENAI_API_KEY")),
             "heygen": bool(os.getenv("HEYGEN_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_SID") and os.getenv("TWILIO_TOKEN"))
@@ -259,6 +259,17 @@ def start_worker():
     from worker import start_worker_background
     Thread(target=start_worker_background, daemon=True).start()
     return jsonify({"status":"worker_start_requested"}), 202
+
+@app.route("/stop", methods=["POST","GET"])
+@login_required
+def stop_worker_route():
+    try:
+        import worker
+        worker.stop_worker()
+        return jsonify({"status":"worker_stop_requested"}), 200
+    except Exception as e:
+        logger.exception("stop failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/health")
 def health():
