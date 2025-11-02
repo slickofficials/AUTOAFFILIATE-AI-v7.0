@@ -5,223 +5,190 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>{{ title }}</title>
 <style>
-/* ==== Metallic sleek UI ==== */
+/* Metallic iOS-inspired sleek dashboard */
 body {
-    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-    background: linear-gradient(135deg, #1f1f1f, #3a3a3a);
-    color: #fff;
     margin: 0;
-    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
+    color: #f0f0f0;
+    overflow-x: hidden;
+    position: relative;
 }
+
+/* Particle shimmer */
+body::before {
+    content: '';
+    position: absolute;
+    width: 200%;
+    height: 200%;
+    top: -50%;
+    left: -50%;
+    background: radial-gradient(circle, rgba(0,255,255,0.1) 1%, transparent 1%) repeat;
+    background-size: 50px 50px;
+    animation: shimmer 15s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+@keyframes shimmer {
+    0% { transform: translate(0,0); }
+    100% { transform: translate(50px,50px); }
+}
+
 header {
-    background: #111;
-    padding: 1rem;
-    text-align: center;
-    font-size: 1.8rem;
-    font-weight: bold;
-    letter-spacing: 1px;
-    color: #0ff;
-    text-shadow: 0 0 8px #0ff;
-}
-.container {
-    padding: 1rem 2rem;
-}
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-.card {
     background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px;
-    padding: 1rem;
-    text-align: center;
-    box-shadow: 0 0 10px rgba(0,255,255,0.2);
-}
-.card h2 {
-    margin: 0.2rem 0;
-    font-size: 1.4rem;
-    color: #0ff;
-}
-.card p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #ccc;
-}
-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 2rem;
-}
-th, td {
-    padding: 0.6rem;
+    backdrop-filter: blur(20px);
+    padding: 1rem 2rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     border-bottom: 1px solid rgba(255,255,255,0.1);
-    text-align: left;
-    font-size: 0.9rem;
+    z-index: 1;
+    position: relative;
 }
-th {
-    color: #0ff;
+h1 { font-size: 1.5rem; }
+.container { padding: 2rem; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); z-index: 1; position: relative; }
+
+.card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px;
+    padding: 1rem 1.5rem;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    transition: transform 0.3s, box-shadow 0.3s;
+    position: relative;
+    overflow: hidden;
 }
-button {
-    background: #0ff;
-    color: #111;
-    border: none;
-    padding: 0.6rem 1rem;
-    border-radius: 8px;
-    cursor: pointer;
-    font-weight: bold;
-    margin-bottom: 1rem;
-    text-shadow: 0 0 2px #000;
+.card::after {
+    content: '';
+    position: absolute;
+    top: -50%; left: -50%;
+    width: 200%; height: 200%;
+    background: linear-gradient(45deg, #00e0ff55, #ff00ff55, #ff9f0a55, #00ff9955);
+    transform: rotate(0deg);
+    animation: glow 5s linear infinite;
+    mix-blend-mode: overlay;
+    pointer-events: none;
 }
-button:hover {
-    background: #0cc;
+@keyframes glow {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }
-.countdown {
-    font-size: 1rem;
-    color: #ff0;
-    font-weight: bold;
-    margin-bottom: 1rem;
-}
-video {
-    max-width: 200px;
-    max-height: 120px;
-    border-radius: 8px;
-    border: 1px solid rgba(0,255,255,0.2);
-}
+.card:hover { transform: translateY(-6px); box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
+
+.card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; }
+.stat { font-size: 2rem; font-weight: bold; color: #00e0ff; text-shadow: 0 0 5px #00e0ff; }
+.countdown { font-size: 1.5rem; color: #ff9f0a; text-shadow: 0 0 6px #ff9f0a; }
+.status-list { list-style: none; padding: 0; margin: 0; }
+.status-list li { display: flex; justify-content: space-between; padding: 0.3rem 0; font-weight: 500; }
+.top-links, .recent-posts { max-height: 200px; overflow-y: auto; margin-top: 0.5rem; }
+.top-links li, .recent-posts li { padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem; word-break: break-all; }
+a { color: #00e0ff; text-decoration: none; }
+a:hover { text-decoration: underline; text-shadow: 0 0 6px #00e0ff; }
+footer { text-align: center; padding: 1rem; font-size: 0.8rem; color: rgba(255,255,255,0.5); z-index: 1; position: relative; }
 </style>
 </head>
 <body>
-<header>{{ company }} Dashboard</header>
+<header>
+    <h1>{{ company }} — Dashboard</h1>
+    <div id="last-refresh">Last refresh: --</div>
+</header>
 <div class="container">
-    <div class="countdown">Next post in: <span id="nextPostTimer">--:--:--</span></div>
-    <button id="testPostBtn">🚀 Test Post</button>
-    
-    <div class="stats-grid">
-        <div class="card">
-            <h2 id="totalLinks">0</h2>
-            <p>Total Links</p>
-        </div>
-        <div class="card">
-            <h2 id="pendingLinks">0</h2>
-            <p>Pending</p>
-        </div>
-        <div class="card">
-            <h2 id="sentLinks">0</h2>
-            <p>Sent</p>
-        </div>
-        <div class="card">
-            <h2 id="failedLinks">0</h2>
-            <p>Failed</p>
-        </div>
-        <div class="card">
-            <h2 id="clicksTotal">0</h2>
-            <p>Total Clicks</p>
-        </div>
-        <div class="card">
-            <h2 id="lastPosted">--</h2>
-            <p>Last Post</p>
+    <div class="card">
+        <h2>Links</h2>
+        <div>Total: <span id="total-links" class="stat">0</span></div>
+        <div>Pending: <span id="pending" class="stat">0</span></div>
+        <div>Sent: <span id="sent" class="stat">0</span></div>
+        <div>Failed: <span id="failed" class="stat">0</span></div>
+    </div>
+    <div class="card">
+        <h2>Clicks</h2>
+        <div>Total clicks: <span id="clicks-total" class="stat">0</span></div>
+        <div class="top-links">
+            <h3>Top links</h3>
+            <ul id="top-links-list" class="top-links"></ul>
         </div>
     </div>
-
-    <h3>Top Links by Clicks</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Link</th>
-                <th>Clicks</th>
-            </tr>
-        </thead>
-        <tbody id="topLinks"></tbody>
-    </table>
-
-    <h3>Recent Posts</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>ID</th>
-                <th>URL</th>
-                <th>Status</th>
-                <th>Posted At</th>
-                <th>Avatar</th>
-            </tr>
-        </thead>
-        <tbody id="recentPosts"></tbody>
-    </table>
+    <div class="card">
+        <h2>Next Post</h2>
+        <div class="countdown" id="next-post-countdown">--:--:--</div>
+        <div>Last posted at: <span id="last-posted-at">--</span></div>
+    </div>
+    <div class="card">
+        <h2>Recent Posts</h2>
+        <ul id="recent-posts-list" class="recent-posts"></ul>
+    </div>
+    <div class="card">
+        <h2>Bot Health</h2>
+        <ul class="status-list" id="statuses">
+            <li>AWIN: <span id="status-awin">❌</span></li>
+            <li>Rakuten: <span id="status-rakuten">❌</span></li>
+            <li>OpenAI: <span id="status-openai">❌</span></li>
+            <li>HeyGen: <span id="status-heygen">❌</span></li>
+            <li>Twilio: <span id="status-twilio">❌</span></li>
+        </ul>
+    </div>
 </div>
+<footer>AutoAffiliate HQ &copy; 2025</footer>
 
 <script>
+// Fetch stats and update UI
 async function fetchStats() {
     try {
-        const res = await fetch("/api/stats");
+        const res = await fetch('/api/stats');
         const data = await res.json();
-        document.getElementById("totalLinks").textContent = data.total_links;
-        document.getElementById("pendingLinks").textContent = data.pending;
-        document.getElementById("sentLinks").textContent = data.sent;
-        document.getElementById("failedLinks").textContent = data.failed;
-        document.getElementById("clicksTotal").textContent = data.clicks_total;
-        document.getElementById("lastPosted").textContent = data.last_posted_at ? new Date(data.last_posted_at).toLocaleString() : "--";
+        document.getElementById('total-links').innerText = data.total_links;
+        document.getElementById('pending').innerText = data.pending;
+        document.getElementById('sent').innerText = data.sent;
+        document.getElementById('failed').innerText = data.failed;
+        document.getElementById('clicks-total').innerText = data.clicks_total;
 
-        // Top links
-        const topLinks = document.getElementById("topLinks");
-        topLinks.innerHTML = "";
-        data.top_links.forEach(l => {
-            const tr = document.createElement("tr");
-            tr.innerHTML = `<td><a href="${l.url}" target="_blank">${l.url}</a></td><td>${l.clicks}</td>`;
-            topLinks.appendChild(tr);
+        const topList = document.getElementById('top-links-list');
+        topList.innerHTML = '';
+        data.top_links.forEach(link => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="/r/${link.id}" target="_blank">${link.url}</a> (${link.clicks})`;
+            topList.appendChild(li);
         });
 
-        // Recent posts with video
-        const recent = document.getElementById("recentPosts");
-        recent.innerHTML = "";
-        data.recent_posts.forEach(p => {
-            const tr = document.createElement("tr");
-            let videoCell = "";
-            if(p.video_url) {
-                videoCell = `<video src="${p.video_url}" controls muted></video>`;
-            }
-            tr.innerHTML = `<td>${p.id}</td>
-                            <td><a href="${p.url}" target="_blank">${p.url}</a></td>
-                            <td>${p.status}</td>
-                            <td>${p.posted_at ? new Date(p.posted_at).toLocaleString() : "--"}</td>
-                            <td>${videoCell}</td>`;
-            recent.appendChild(tr);
+        const recentList = document.getElementById('recent-posts-list');
+        recentList.innerHTML = '';
+        data.recent_posts.forEach(r => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="/r/${r.id}" target="_blank">${r.url}</a> [${r.status}]`;
+            recentList.appendChild(li);
         });
 
-        // Countdown
-        let next = data.next_post_in_seconds;
-        if(next !== null) {
-            const timerEl = document.getElementById("nextPostTimer");
-            clearInterval(timerEl.timer);
-            function updateTimer() {
-                let hrs = Math.floor(next/3600).toString().padStart(2,"0");
-                let mins = Math.floor((next%3600)/60).toString().padStart(2,"0");
-                let secs = (next%60).toString().padStart(2,"0");
-                timerEl.textContent = `${hrs}:${mins}:${secs}`;
-                if(next>0) next--; 
-            }
-            updateTimer();
-            timerEl.timer = setInterval(updateTimer, 1000);
-        }
+        document.getElementById('status-awin').innerText = data.statuses.awin ? '✅' : '❌';
+        document.getElementById('status-rakuten').innerText = data.statuses.rakuten ? '✅' : '❌';
+        document.getElementById('status-openai').innerText = data.statuses.openai ? '✅' : '❌';
+        document.getElementById('status-heygen').innerText = data.statuses.heygen ? '✅' : '❌';
+        document.getElementById('status-twilio').innerText = data.statuses.twilio ? '✅' : '❌';
 
-    } catch(e) { console.error(e); }
+        document.getElementById('last-posted-at').innerText = data.last_posted_at ? new Date(data.last_posted_at).toLocaleString() : '--';
+        if(data.next_post_in_seconds !== null) startCountdown(data.next_post_in_seconds);
+        document.getElementById('last-refresh').innerText = 'Last refresh: ' + new Date().toLocaleTimeString();
+    } catch(e){ console.error(e); }
 }
 
-// Test post button
-document.getElementById("testPostBtn").addEventListener("click", async () => {
-    try {
-        const res = await fetch("/api/test-post", { method: "POST" });
-        const data = await res.json();
-        alert(data.message);
-        fetchStats(); // refresh stats
-    } catch(e) {
-        alert("Test post failed: "+e);
+let countdownInterval;
+function startCountdown(seconds){
+    clearInterval(countdownInterval);
+    let remaining = seconds;
+    const el = document.getElementById('next-post-countdown');
+    function tick(){
+        const h = Math.floor(remaining/3600).toString().padStart(2,'0');
+        const m = Math.floor((remaining%3600)/60).toString().padStart(2,'0');
+        const s = (remaining%60).toString().padStart(2,'0');
+        el.innerText = `${h}:${m}:${s}`;
+        if(remaining>0) remaining--; else clearInterval(countdownInterval);
     }
-});
+    tick();
+    countdownInterval = setInterval(tick,1000);
+}
 
 fetchStats();
-setInterval(fetchStats, 60000); // refresh every 60s
+setInterval(fetchStats,10000);
 </script>
 </body>
 </html>
