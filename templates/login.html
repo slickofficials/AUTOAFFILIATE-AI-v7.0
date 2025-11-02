@@ -1,152 +1,30 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Login | AutoAffiliate AI</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
-  <style>
-    :root {
-      --bg-dark: radial-gradient(circle at 50% 30%, #1a1a1a, #0e0e0e 80%);
-      --bg-light: radial-gradient(circle at 50% 30%, #f2f2f2, #dcdcdc 80%);
-      --glass-dark: rgba(255, 255, 255, 0.08);
-      --glass-light: rgba(255, 255, 255, 0.35);
-      --text-dark: #e6e6e6;
-      --text-light: #222;
-      --accent: #00b4d8;
-    }
-
-    body {
-      font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: var(--bg-dark);
-      color: var(--text-dark);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      transition: all 0.4s ease;
-    }
-
-    body.light-mode {
-      background: var(--bg-light);
-      color: var(--text-light);
-    }
-
-    .login-box {
-      background: var(--glass-dark);
-      backdrop-filter: blur(20px);
-      border-radius: 16px;
-      padding: 2.5rem;
-      width: 100%;
-      max-width: 420px;
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-      transition: all 0.4s ease;
-    }
-
-    body.light-mode .login-box {
-      background: var(--glass-light);
-      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
-    }
-
-    h2 {
-      text-align: center;
-      margin-bottom: 1.5rem;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
-    .form-control {
-      border: none;
-      background: rgba(255, 255, 255, 0.1);
-      color: inherit;
-      border-radius: 10px;
-      padding: 0.8rem;
-      transition: all 0.3s ease;
-    }
-
-    .form-control:focus {
-      box-shadow: 0 0 0 3px var(--accent);
-      background: rgba(255, 255, 255, 0.2);
-    }
-
-    .btn-primary {
-      background: var(--accent);
-      border: none;
-      border-radius: 10px;
-      transition: 0.3s;
-    }
-
-    .btn-primary:hover {
-      background: #0090b8;
-      transform: scale(1.02);
-    }
-
-    .theme-toggle {
-      position: absolute;
-      top: 20px;
-      right: 20px;
-      background: var(--glass-dark);
-      border: none;
-      border-radius: 50%;
-      width: 42px;
-      height: 42px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      color: var(--accent);
-      transition: all 0.3s ease;
-    }
-
-    body.light-mode .theme-toggle {
-      background: var(--glass-light);
-      color: #111;
-    }
-
-    .theme-toggle:hover {
-      transform: scale(1.1);
-    }
-
-    .small a {
-      text-decoration: none;
-      color: var(--accent);
-    }
-
-    .small a:hover {
-      text-decoration: underline;
-    }
-  </style>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Login — {{ company }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <button class="theme-toggle" id="themeToggle" title="Toggle Dark/Light">
-    ☀️
-  </button>
-
-  <div class="login-box">
-    <h2>AutoAffiliate AI</h2>
-    <form action="/login" method="POST">
-      <div class="mb-3">
-        <label for="email" class="form-label">Email</label>
-        <input type="text" class="form-control" name="email" placeholder="Enter email" required />
+<body class="bg-gradient-to-br from-[#071022] to-[#03040a] flex items-center justify-center min-h-screen text-white">
+  <div class="w-full max-w-md p-8 glass rounded-xl">
+    <h2 class="text-2xl font-bold mb-4">Private Login</h2>
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="mb-4 text-sm text-amber-200">{{ messages[0] }}</div>
+      {% endif %}
+    {% endwith %}
+    <form method="POST" action="/login" class="space-y-4">
+      <div>
+        <label class="text-sm text-slate-300">Email</label>
+        <input name="username" class="w-full p-3 rounded bg-white/5" required />
       </div>
-      <div class="mb-3">
-        <label for="password" class="form-label">Password</label>
-        <input type="password" class="form-control" name="password" placeholder="Enter password" required />
+      <div>
+        <label class="text-sm text-slate-300">Password</label>
+        <input type="password" name="password" class="w-full p-3 rounded bg-white/5" required />
       </div>
-      <button type="submit" class="btn btn-primary w-100">Login</button>
+      <button class="w-full py-3 rounded bg-cyan-500/90">Login</button>
     </form>
-    <p class="text-center mt-3 small">
-      Need help? Contact
-      <a href="mailto:support@slickofficials.com">support@slickofficials.com</a>
-    </p>
+    <p class="mt-4 text-xs text-slate-400">Contact <a href="mailto:{{ contact_email or 'support@slickofficials.com' }}" class="underline">support</a></p>
   </div>
-
-  <script>
-    const toggle = document.getElementById("themeToggle");
-    toggle.addEventListener("click", () => {
-      document.body.classList.toggle("light-mode");
-      toggle.textContent = document.body.classList.contains("light-mode") ? "🌙" : "☀️";
-    });
-  </script>
 </body>
 </html>
