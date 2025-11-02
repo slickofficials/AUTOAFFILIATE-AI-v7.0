@@ -3,160 +3,98 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ title }}</title>
+<title>Affiliate Bot Dashboard</title>
 <style>
-/* Metallic iOS-inspired sleek dashboard */
 body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-    color: #f0f0f0;
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
+    color: #fff;
+    margin: 0; padding: 0;
 }
 header {
-    background: rgba(255,255,255,0.05);
-    backdrop-filter: blur(15px);
-    padding: 1rem 2rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    border-bottom: 1px solid rgba(255,255,255,0.1);
+    background: #1c1c1c;
+    padding: 1rem;
+    text-align: center;
+    font-size: 1.8rem;
+    letter-spacing: 1px;
+    border-bottom: 2px solid #ff4081;
 }
-h1 { font-size: 1.5rem; }
-.container { padding: 2rem; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit,minmax(280px,1fr)); }
+.container {
+    padding: 2rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 2rem;
+}
 .card {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.05);
+    border: 1px solid #ff4081;
     border-radius: 15px;
-    padding: 1rem 1.5rem;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-    transition: transform 0.2s, box-shadow 0.2s;
+    padding: 1rem;
+    text-align: center;
+    transition: transform 0.3s;
 }
-.card:hover { transform: translateY(-5px); box-shadow: 0 8px 25px rgba(0,0,0,0.5); }
-.card h2 { font-size: 1.2rem; margin-bottom: 0.5rem; }
-.stat { font-size: 2rem; font-weight: bold; color: #00e0ff; }
-.countdown { font-size: 1.5rem; color: #ff9f0a; }
-.status-list { list-style: none; padding: 0; margin: 0; }
-.status-list li { display: flex; justify-content: space-between; padding: 0.3rem 0; }
-.top-links, .recent-posts { max-height: 200px; overflow-y: auto; margin-top: 0.5rem; }
-.top-links li, .recent-posts li { padding: 0.3rem 0; border-bottom: 1px solid rgba(255,255,255,0.1); font-size: 0.9rem; word-break: break-all; }
-a { color: #00e0ff; text-decoration: none; }
-a:hover { text-decoration: underline; }
-footer { text-align: center; padding: 1rem; font-size: 0.8rem; color: rgba(255,255,255,0.5); }
+.card:hover { transform: scale(1.05); }
+h2 { margin-bottom: 0.5rem; }
+.products {
+    max-height: 200px;
+    overflow-y: auto;
+    text-align: left;
+}
+.products a {
+    color: #ff4081;
+    text-decoration: none;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+.products a:hover { text-decoration: underline; }
 </style>
 </head>
 <body>
-<header>
-    <h1>{{ company }} — Dashboard</h1>
-    <div id="last-refresh">Last refresh: --</div>
-</header>
+<header>✨ Mystical Affiliate Bot Dashboard ✨</header>
 <div class="container">
     <div class="card">
-        <h2>Links</h2>
-        <div>Total: <span id="total-links" class="stat">0</span></div>
-        <div>Pending: <span id="pending" class="stat">0</span></div>
-        <div>Sent: <span id="sent" class="stat">0</span></div>
-        <div>Failed: <span id="failed" class="stat">0</span></div>
+        <h2>Last Post</h2>
+        <p id="last_post">{{ stats['last_post_time'] or 'Never' }}</p>
     </div>
     <div class="card">
-        <h2>Clicks</h2>
-        <div>Total clicks: <span id="clicks-total" class="stat">0</span></div>
-        <div class="top-links">
-            <h3>Top links</h3>
-            <ul id="top-links-list" class="top-links"></ul>
+        <h2>Next Post In</h2>
+        <p id="next_post">{{ stats['next_post_in'] }} s</p>
+    </div>
+    <div class="card">
+        <h2>Total Clicks</h2>
+        <p id="clicks">{{ stats['total_clicks'] }}</p>
+    </div>
+    <div class="card">
+        <h2>Products</h2>
+        <div class="products" id="products">
+            {% for p in stats['products'] %}
+                <a href="{{ p['url'] }}" target="_blank">{{ p['name'] }}</a>
+            {% endfor %}
         </div>
     </div>
-    <div class="card">
-        <h2>Next Post</h2>
-        <div class="countdown" id="next-post-countdown">--:--:--</div>
-        <div>Last posted at: <span id="last-posted-at">--</span></div>
-    </div>
-    <div class="card">
-        <h2>Recent Posts</h2>
-        <ul id="recent-posts-list" class="recent-posts"></ul>
-    </div>
-    <div class="card">
-        <h2>Bot Health</h2>
-        <ul class="status-list" id="statuses">
-            <li>AWIN: <span id="status-awin">❌</span></li>
-            <li>Rakuten: <span id="status-rakuten">❌</span></li>
-            <li>OpenAI: <span id="status-openai">❌</span></li>
-            <li>HeyGen: <span id="status-heygen">❌</span></li>
-            <li>Twilio: <span id="status-twilio">❌</span></li>
-        </ul>
-    </div>
 </div>
-<footer>AutoAffiliate HQ &copy; 2025</footer>
+
 <script>
-// Fetch stats and update UI
-async function fetchStats() {
-    try {
-        const res = await fetch('/api/stats');
-        const data = await res.json();
-        document.getElementById('total-links').innerText = data.total_links;
-        document.getElementById('pending').innerText = data.pending;
-        document.getElementById('sent').innerText = data.sent;
-        document.getElementById('failed').innerText = data.failed;
-        document.getElementById('clicks-total').innerText = data.clicks_total;
+async function refreshStats() {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    
+    document.getElementById('last_post').innerText = data.last_post_time || 'Never';
+    document.getElementById('next_post').innerText = data.next_post_in + ' s';
+    document.getElementById('clicks').innerText = data.total_clicks;
 
-        // Top links
-        const topList = document.getElementById('top-links-list');
-        topList.innerHTML = '';
-        data.top_links.forEach(link => {
-            const li = document.createElement('li');
-            li.innerHTML = `<a href="/r/${link.id}" target="_blank">${link.url}</a> (${link.clicks})`;
-            topList.appendChild(li);
-        });
-
-        // Recent posts
-        const recentList = document.getElementById('recent-posts-list');
-        recentList.innerHTML = '';
-        data.recent_posts.forEach(r => {
-            const li = document.createElement('li');
-            li.innerHTML = `<a href="/r/${r.id}" target="_blank">${r.url}</a> [${r.status}]`;
-            recentList.appendChild(li);
-        });
-
-        // Statuses
-        document.getElementById('status-awin').innerText = data.statuses.awin ? '✅' : '❌';
-        document.getElementById('status-rakuten').innerText = data.statuses.rakuten ? '✅' : '❌';
-        document.getElementById('status-openai').innerText = data.statuses.openai ? '✅' : '❌';
-        document.getElementById('status-heygen').innerText = data.statuses.heygen ? '✅' : '❌';
-        document.getElementById('status-twilio').innerText = data.statuses.twilio ? '✅' : '❌';
-
-        // Last posted
-        document.getElementById('last-posted-at').innerText = data.last_posted_at ? new Date(data.last_posted_at).toLocaleString() : '--';
-
-        // Next post countdown
-        if(data.next_post_in_seconds !== null){
-            startCountdown(data.next_post_in_seconds);
-        }
-
-        document.getElementById('last-refresh').innerText = 'Last refresh: ' + new Date().toLocaleTimeString();
-    } catch(e){
-        console.error(e);
-    }
+    const productsDiv = document.getElementById('products');
+    productsDiv.innerHTML = '';
+    data.products.forEach(p => {
+        const a = document.createElement('a');
+        a.href = p.url;
+        a.target = '_blank';
+        a.innerText = p.name;
+        productsDiv.appendChild(a);
+    });
 }
 
-let countdownInterval;
-function startCountdown(seconds){
-    clearInterval(countdownInterval);
-    let remaining = seconds;
-    const el = document.getElementById('next-post-countdown');
-    function tick(){
-        const h = Math.floor(remaining/3600).toString().padStart(2,'0');
-        const m = Math.floor((remaining%3600)/60).toString().padStart(2,'0');
-        const s = (remaining%60).toString().padStart(2,'0');
-        el.innerText = `${h}:${m}:${s}`;
-        if(remaining>0) remaining--; else clearInterval(countdownInterval);
-    }
-    tick();
-    countdownInterval = setInterval(tick,1000);
-}
-
-// Initial load
-fetchStats();
-// Refresh every 10s
-setInterval(fetchStats, 10000);
+setInterval(refreshStats, 1000);
 </script>
 </body>
 </html>
