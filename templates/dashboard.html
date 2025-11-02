@@ -1,208 +1,227 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>{{ title or 'Dashboard' }} — {{ company }}</title>
-  <!-- Tailwind CDN for quick deployment -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <style>
-    body { background: radial-gradient(circle at 10% 10%, #071022 0%, #05060a 60%); }
-    .glass { background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border: 1px solid rgba(255,255,255,0.04); backdrop-filter: blur(8px); }
-    .neon { box-shadow: 0 8px 30px rgba(6,182,212,0.08); }
-    .orb { width:54px; height:54px; border-radius:9999px; display:flex; align-items:center; justify-content:center; font-weight:700; color:#041426; }
-    .pulse { animation: pulse 2.6s infinite; }
-    @keyframes pulse { 0%{ transform:scale(1);}50%{transform:scale(1.08);}100%{transform:scale(1);} }
-    .mystic { background: linear-gradient(45deg, rgba(124,58,237,0.12), rgba(6,182,212,0.06)); border-radius:12px; padding:10px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+/* ==== Metallic sleek UI ==== */
+body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    background: linear-gradient(135deg, #1f1f1f, #3a3a3a);
+    color: #fff;
+    margin: 0;
+    padding: 0;
+}
+header {
+    background: #111;
+    padding: 1rem;
+    text-align: center;
+    font-size: 1.8rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+    color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+}
+.container {
+    padding: 1rem 2rem;
+}
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.card {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    box-shadow: 0 0 10px rgba(0,255,255,0.2);
+}
+.card h2 {
+    margin: 0.2rem 0;
+    font-size: 1.4rem;
+    color: #0ff;
+}
+.card p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: #ccc;
+}
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 2rem;
+}
+th, td {
+    padding: 0.6rem;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    text-align: left;
+    font-size: 0.9rem;
+}
+th {
+    color: #0ff;
+}
+button {
+    background: #0ff;
+    color: #111;
+    border: none;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 2px #000;
+}
+button:hover {
+    background: #0cc;
+}
+.countdown {
+    font-size: 1rem;
+    color: #ff0;
+    font-weight: bold;
+    margin-bottom: 1rem;
+}
+video {
+    max-width: 200px;
+    max-height: 120px;
+    border-radius: 8px;
+    border: 1px solid rgba(0,255,255,0.2);
+}
+</style>
 </head>
-<body class="text-white antialiased">
-  <div class="max-w-6xl mx-auto p-6">
-    <header class="flex items-center justify-between mb-6">
-      <div class="flex items-center gap-4">
-        <div class="w-14 h-14 rounded-full bg-gradient-to-br from-slate-800 via-slate-700 to-slate-600 flex items-center justify-center neon">
-          <span class="text-2xl font-extrabold">SF</span>
+<body>
+<header>{{ company }} Dashboard</header>
+<div class="container">
+    <div class="countdown">Next post in: <span id="nextPostTimer">--:--:--</span></div>
+    <button id="testPostBtn">🚀 Test Post</button>
+    
+    <div class="stats-grid">
+        <div class="card">
+            <h2 id="totalLinks">0</h2>
+            <p>Total Links</p>
         </div>
-        <div>
-          <h1 class="text-2xl font-bold">SlickOfficials — Command Core</h1>
-          <p class="text-sm text-slate-300">AutoAffiliate AI · Metallic Mystique</p>
+        <div class="card">
+            <h2 id="pendingLinks">0</h2>
+            <p>Pending</p>
         </div>
-      </div>
-      <div class="flex items-center gap-4">
-        <div class="text-right">
-          <div class="text-xs text-slate-400">Next post in</div>
-          <div id="nextCountdown" class="text-lg font-mono text-cyan-300">--:--:--</div>
+        <div class="card">
+            <h2 id="sentLinks">0</h2>
+            <p>Sent</p>
         </div>
-        <button id="refreshBtn" class="px-4 py-2 rounded-lg bg-gradient-to-tr from-cyan-500 to-blue-600">Refresh</button>
-        <button id="postNowBtn" class="px-4 py-2 rounded-lg bg-gradient-to-tr from-pink-500 to-violet-600">Post Now</button>
-        <a href="/logout" class="px-3 py-2 rounded-lg bg-white/5">Logout</a>
-      </div>
-    </header>
+        <div class="card">
+            <h2 id="failedLinks">0</h2>
+            <p>Failed</p>
+        </div>
+        <div class="card">
+            <h2 id="clicksTotal">0</h2>
+            <p>Total Clicks</p>
+        </div>
+        <div class="card">
+            <h2 id="lastPosted">--</h2>
+            <p>Last Post</p>
+        </div>
+    </div>
 
-    <main class="grid grid-cols-12 gap-6">
-      <section class="col-span-8 glass p-5 rounded-2xl">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="text-lg font-semibold">Health & Status</h2>
-          <div class="text-sm text-slate-400">Live · Auto-refresh 10s</div>
-        </div>
+    <h3>Top Links by Clicks</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Link</th>
+                <th>Clicks</th>
+            </tr>
+        </thead>
+        <tbody id="topLinks"></tbody>
+    </table>
 
-        <div class="flex gap-4 items-center mb-6">
-          <div class="flex items-center gap-3">
-            <div class="orb bg-cyan-300 pulse">A</div>
-            <div>
-              <div class="font-medium">AWIN</div>
-              <div id="awinStatus" class="text-xs text-slate-300">—</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="orb bg-indigo-300 pulse">R</div>
-            <div>
-              <div class="font-medium">Rakuten</div>
-              <div id="rakutenStatus" class="text-xs text-slate-300">—</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="orb bg-amber-300 pulse">O</div>
-            <div>
-              <div class="font-medium">OpenAI</div>
-              <div id="openaiStatus" class="text-xs text-slate-300">—</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="orb bg-pink-300 pulse">H</div>
-            <div>
-              <div class="font-medium">HeyGen</div>
-              <div id="heygenStatus" class="text-xs text-slate-300">—</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class="orb bg-emerald-300 pulse">T</div>
-            <div>
-              <div class="font-medium">Twilio</div>
-              <div id="twilioStatus" class="text-xs text-slate-300">—</div>
-            </div>
-          </div>
-        </div>
+    <h3>Recent Posts</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>URL</th>
+                <th>Status</th>
+                <th>Posted At</th>
+                <th>Avatar</th>
+            </tr>
+        </thead>
+        <tbody id="recentPosts"></tbody>
+    </table>
+</div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="mystic">
-            <div class="text-sm text-slate-300 mb-2">Posts & Clicks (recent)</div>
-            <div id="miniChart" class="h-44 bg-black/20 rounded-md"></div>
-          </div>
-          <div class="mystic">
-            <div class="text-sm text-slate-300 mb-2">Platform Breakdown</div>
-            <div id="platformBreakdown" class="h-44 bg-black/20 rounded-md"></div>
-          </div>
-        </div>
-      </section>
+<script>
+async function fetchStats() {
+    try {
+        const res = await fetch("/api/stats");
+        const data = await res.json();
+        document.getElementById("totalLinks").textContent = data.total_links;
+        document.getElementById("pendingLinks").textContent = data.pending;
+        document.getElementById("sentLinks").textContent = data.sent;
+        document.getElementById("failedLinks").textContent = data.failed;
+        document.getElementById("clicksTotal").textContent = data.clicks_total;
+        document.getElementById("lastPosted").textContent = data.last_posted_at ? new Date(data.last_posted_at).toLocaleString() : "--";
 
-      <aside class="col-span-4 glass p-4 rounded-2xl">
-        <div class="grid grid-cols-2 gap-3">
-          <div class="p-3 rounded-lg bg-white/3 text-center">
-            <div class="text-xs text-slate-300">Total Links</div>
-            <div id="totalLinks" class="text-2xl font-bold text-cyan-200">—</div>
-          </div>
-          <div class="p-3 rounded-lg bg-white/3 text-center">
-            <div class="text-xs text-slate-300">Pending</div>
-            <div id="pendingLinks" class="text-2xl font-bold text-amber-200">—</div>
-          </div>
-          <div class="p-3 rounded-lg bg-white/3 text-center">
-            <div class="text-xs text-slate-300">Sent</div>
-            <div id="sentLinks" class="text-2xl font-bold text-emerald-200">—</div>
-          </div>
-          <div class="p-3 rounded-lg bg-white/3 text-center">
-            <div class="text-xs text-slate-300">Clicks</div>
-            <div id="clicksTotal" class="text-2xl font-bold text-pink-200">—</div>
-          </div>
-        </div>
-
-        <div class="mt-4">
-          <div class="text-sm text-slate-300 mb-2">Top Links</div>
-          <div id="topLinks" class="space-y-2 max-h-48 overflow-auto"></div>
-        </div>
-      </aside>
-
-      <section class="col-span-12 glass p-4 rounded-2xl">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-lg font-semibold">Recent Posts</h3>
-          <div class="text-sm text-slate-400">Last 10</div>
-        </div>
-        <div id="recentTable" class="overflow-auto max-h-64"></div>
-      </section>
-    </main>
-
-    <footer class="mt-6 text-center text-slate-400">
-      <div class="inline-block px-6 py-3 rounded-3xl glass">✨ Mystical mode engaged — your bot is awake ✨</div>
-    </footer>
-  </div>
-
-  <script>
-    const api = "/api/stats";
-    async function fetchStats(){
-      try{
-        const res = await fetch(api);
-        if(!res.ok) throw new Error("failed");
-        const j = await res.json();
-        document.getElementById("totalLinks").textContent = j.total_links ?? j.total ?? "—";
-        document.getElementById("pendingLinks").textContent = j.pending ?? "—";
-        document.getElementById("sentLinks").textContent = j.sent ?? "—";
-        document.getElementById("clicksTotal").textContent = j.clicks_total ?? "—";
-        document.getElementById("awinStatus").textContent = j.statuses?.awin ? "online" : "offline";
-        document.getElementById("rakutenStatus").textContent = j.statuses?.rakuten ? "online" : "offline";
-        document.getElementById("openaiStatus").textContent = j.statuses?.openai ? "online" : "offline";
-        document.getElementById("heygenStatus").textContent = j.statuses?.heygen ? "online" : "offline";
-        document.getElementById("twilioStatus").textContent = j.statuses?.twilio ? "online" : "offline";
-        // next countdown
-        const next = j.next_post_in_seconds ?? 0;
-        const el = document.getElementById("nextCountdown");
-        const h = String(Math.floor(next/3600)).padStart(2,'0');
-        const m = String(Math.floor((next%3600)/60)).padStart(2,'0');
-        const s = String(Math.floor(next%60)).padStart(2,'0');
-        el.textContent = `${h}:${m}:${s}`;
-        // top links
-        const topEl = document.getElementById("topLinks");
-        topEl.innerHTML = "";
-        (j.top_links || []).forEach(l=>{
-          const d = document.createElement("div");
-          d.className = "p-2 rounded-md bg-white/5 text-sm";
-          d.innerHTML = `<div class="font-semibold truncate">${l.url}</div><div class="text-xs text-slate-300">Clicks: ${l.clicks}</div>`;
-          topEl.appendChild(d);
+        // Top links
+        const topLinks = document.getElementById("topLinks");
+        topLinks.innerHTML = "";
+        data.top_links.forEach(l => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `<td><a href="${l.url}" target="_blank">${l.url}</a></td><td>${l.clicks}</td>`;
+            topLinks.appendChild(tr);
         });
-        // recent posts table
-        const rt = document.getElementById("recentTable");
-        rt.innerHTML = "";
-        const tbl = document.createElement("table");
-        tbl.className = "min-w-full text-left";
-        const thead = document.createElement("thead");
-        thead.innerHTML = `<tr class="text-xs text-slate-400"><th class="p-2">ID</th><th class="p-2">Link</th><th class="p-2">Status</th><th class="p-2">Posted At</th><th class="p-2">Preview</th></tr>`;
-        tbl.appendChild(thead);
-        const tbody = document.createElement("tbody");
-        (j.recent_posts || []).forEach(p=>{
-          const tr = document.createElement("tr");
-          tr.className = "border-b border-white/5";
-          tr.innerHTML = `<td class="p-2 text-sm">${p.id}</td><td class="p-2 text-sm truncate max-w-[32rem]">${p.url}</td><td class="p-2 text-sm">${p.status}</td><td class="p-2 text-sm">${p.posted_at? new Date(p.posted_at).toLocaleString() : '—'}</td><td class="p-2 text-sm"><a class="underline" target="_blank" href="/r/${p.id}">Preview</a></td>`;
-          tbody.appendChild(tr);
+
+        // Recent posts with video
+        const recent = document.getElementById("recentPosts");
+        recent.innerHTML = "";
+        data.recent_posts.forEach(p => {
+            const tr = document.createElement("tr");
+            let videoCell = "";
+            if(p.video_url) {
+                videoCell = `<video src="${p.video_url}" controls muted></video>`;
+            }
+            tr.innerHTML = `<td>${p.id}</td>
+                            <td><a href="${p.url}" target="_blank">${p.url}</a></td>
+                            <td>${p.status}</td>
+                            <td>${p.posted_at ? new Date(p.posted_at).toLocaleString() : "--"}</td>
+                            <td>${videoCell}</td>`;
+            recent.appendChild(tr);
         });
-        tbl.appendChild(tbody);
-        rt.appendChild(tbl);
-      }catch(e){
-        console.error(e);
-      }
+
+        // Countdown
+        let next = data.next_post_in_seconds;
+        if(next !== null) {
+            const timerEl = document.getElementById("nextPostTimer");
+            clearInterval(timerEl.timer);
+            function updateTimer() {
+                let hrs = Math.floor(next/3600).toString().padStart(2,"0");
+                let mins = Math.floor((next%3600)/60).toString().padStart(2,"0");
+                let secs = (next%60).toString().padStart(2,"0");
+                timerEl.textContent = `${hrs}:${mins}:${secs}`;
+                if(next>0) next--; 
+            }
+            updateTimer();
+            timerEl.timer = setInterval(updateTimer, 1000);
+        }
+
+    } catch(e) { console.error(e); }
+}
+
+// Test post button
+document.getElementById("testPostBtn").addEventListener("click", async () => {
+    try {
+        const res = await fetch("/api/test-post", { method: "POST" });
+        const data = await res.json();
+        alert(data.message);
+        fetchStats(); // refresh stats
+    } catch(e) {
+        alert("Test post failed: "+e);
     }
+});
 
-    fetchStats();
-    // poll
-    setInterval(fetchStats, 10000);
-
-    document.getElementById("refreshBtn").addEventListener("click", async ()=>{
-      await fetch("/refresh", { method: "POST" });
-      fetchStats();
-    });
-    document.getElementById("postNowBtn").addEventListener("click", async ()=>{
-      // try to post now: call start endpoint to ensure worker running and then refresh
-      await fetch("/start", { method: "POST" });
-      setTimeout(fetchStats, 2000);
-    });
-  </script>
+fetchStats();
+setInterval(fetchStats, 60000); // refresh every 60s
+</script>
 </body>
 </html>
