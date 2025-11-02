@@ -1,100 +1,232 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Affiliate Bot Dashboard</title>
-<style>
-body {
-    font-family: 'Arial', sans-serif;
-    background: linear-gradient(145deg, #0f0c29, #302b63, #24243e);
-    color: #fff;
-    margin: 0; padding: 0;
-}
-header {
-    background: #1c1c1c;
-    padding: 1rem;
-    text-align: center;
-    font-size: 1.8rem;
-    letter-spacing: 1px;
-    border-bottom: 2px solid #ff4081;
-}
-.container {
-    padding: 2rem;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 2rem;
-}
-.card {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid #ff4081;
-    border-radius: 15px;
-    padding: 1rem;
-    text-align: center;
-    transition: transform 0.3s;
-}
-.card:hover { transform: scale(1.05); }
-h2 { margin-bottom: 0.5rem; }
-.products {
-    max-height: 200px;
-    overflow-y: auto;
-    text-align: left;
-}
-.products a {
-    color: #ff4081;
-    text-decoration: none;
-    display: block;
-    margin-bottom: 0.3rem;
-}
-.products a:hover { text-decoration: underline; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ title }}</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #0d0d0d, #1a1a1a);
+      color: #e0e0e0;
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0; padding: 0;
+    }
+    header {
+      background: #111;
+      padding: 20px;
+      text-align: center;
+      border-bottom: 1px solid #333;
+    }
+    h1 {
+      margin: 0;
+      color: #00bfff;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .container {
+      max-width: 1100px;
+      margin: 30px auto;
+      padding: 20px;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit,minmax(200px,1fr));
+      gap: 20px;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid #222;
+      border-radius: 12px;
+      padding: 20px;
+      text-align: center;
+      transition: 0.3s;
+    }
+    .card:hover {
+      transform: scale(1.02);
+      box-shadow: 0 0 20px #00bfff55;
+    }
+    .card h3 {
+      margin: 0 0 10px 0;
+      color: #00bfff;
+    }
+    button {
+      background: #00bfff;
+      color: black;
+      font-weight: bold;
+      border: none;
+      padding: 10px 18px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    button:hover { background: #00ffff; }
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #777;
+    }
+    .health {
+      margin-top: 30px;
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+      padding: 15px;
+    }
+    .health span {
+      display: inline-block;
+      margin: 5px 10px;
+      padding: 6px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    .ok { background: #004400; color: #00ff88; }
+    .fail { background: #440000; color: #ff4444; }
+  </style>
 </head>
 <body>
-<header>✨ Mystical Affiliate Bot Dashboard ✨</header>
-<div class="container">
-    <div class="card">
-        <h2>Last Post</h2>
-        <p id="last_post">{{ stats['last_post_time'] or 'Never' }}</p>
-    </div>
-    <div class="card">
-        <h2>Next Post In</h2>
-        <p id="next_post">{{ stats['next_post_in'] }} s</p>
-    </div>
-    <div class="card">
-        <h2>Total Clicks</h2>
-        <p id="clicks">{{ stats['total_clicks'] }}</p>
-    </div>
-    <div class="card">
-        <h2>Products</h2>
-        <div class="products" id="products">
-            {% for p in stats['products'] %}
-                <a href="{{ p['url'] }}" target="_blank">{{ p['name'] }}</a>
-            {% endfor %}
-        </div>
-    </div>
-</div>
+  <header>
+    <h1>{{ company }}</h1>
+    <p>HQ Dashboard — Live Bot Health & Stats</p>
+  </header>
 
-<script>
-async function refreshStats() {
-    const res = await fetch('/api/stats');
-    const data = await res.json();
-    
-    document.getElementById('last_post').innerText = data.last_post_time || 'Never';
-    document.getElementById('next_post').innerText = data.next_post_in + ' s';
-    document.getElementById('clicks').innerText = data.total_clicks;
+  <div class="container">
+    <div class="stats-grid">
+      <div class="card"><h3>Total Links</h3><p id="total_links">0</p></div>
+      <div class="card"><h3>Pending</h3><p id="pending">0</p></div>
+      <div class="card"><h3>Sent</h3><p id="sent">0</p></div>
+      <div class="card"><h3>Failed</h3><p id="failed">0</p></div>
+      <div class="card"><h3>Clicks</h3><p id="clicks_total">0</p></div>
+      <div class="card"><h3>Next Post</h3><p id="next_post">--</p></div>
+    </div>
 
-    const productsDiv = document.getElementById('products');
-    productsDiv.innerHTML = '';
-    data.products.forEach(p => {
-        const a = document.createElement('a');
-        a.href = p.url;
-        a.target = '_blank';
-        a.innerText = p.name;
-        productsDiv.appendChild(a);
-    });
-}
+    <div style="text-align:center;margin-top:30px;">
+      <button onclick="refreshNow()">🔁 Refresh Sources</button>
+      <button onclick="startWorker()">🚀 Start Worker</button>
+      <a href="/logout"><button style="background:#ff4444;">Logout</button></a>
+    </div>
 
-setInterval(refreshStats, 1000);
-</script>
+    <div class="health" id="health_status">
+      <h3>Integration Health</h3>
+      <div id="health_services"></div>
+    </div>
+
+    <div class="card" style="margin-top:30px;">
+      <h3>Top Links</h3>
+      <ul id="top_links" style="text-align:left;list-style:none;padding:0;"></ul>
+    </div>
+
+    <div class="card" style="margin-top:30px;">
+      <h3>Recent Posts</h3>
+      <ul id="recent_posts" style="text-align:left;list-style:none;padding:0;"></ul>
+    </div>
+  </div>
+
+  <footer>
+    &copy; 2025 {{ company }} | Powered by AutoAffiliate HQ
+  </footer>
+
+  <script>
+    async function loadStats() {
+      try {
+        const r = await fetch('/api/stats');
+        const stats = await r.json();
+
+        document.getElementById('total_links').textContent = stats.total_links;
+        document.getElementById('pending').textContent = stats.pending;
+        document.getElementById('sent').textContent = stats.sent;
+        document.getElementById('failed').textContent = stats.failed;
+        document.getElementById('clicks_total').textContent = stats.clicks_total;
+
+        let nextPost = stats.next_post_in_seconds;
+        if (nextPost !== null) {
+          const mins = Math.floor(nextPost / 60);
+          const secs = nextPost % 60;
+          document.getElementById('next_post').textContent = `${mins}m ${secs}s`;
+        }
+
+        // top links
+        const tl = document.getElementById('top_links');
+        tl.innerHTML = "";
+        stats.top_links.forEach(l => {
+          const item = document.createElement('li');
+          item.innerHTML = `<a href="/r/${l.id}" target="_blank">${l.url}</a> — ${l.clicks} clicks`;
+          tl.appendChild(item);
+        });
+
+        // recent posts
+        const rp = document.getElementById('recent_posts');
+        rp.innerHTML = "";
+        stats.recent_posts.forEach(p => {
+          const li = document.createElement('li');
+          li.innerHTML = `<b>${p.status.toUpperCase()}</b> — ${p.url}`;
+          rp.appendChild(li);
+        });
+
+        // health
+        const hs = document.getElementById('health_services');
+        hs.innerHTML = "";
+        for (const [k,v] of Object.entries(stats.statuses)) {
+          const s = document.createElement('span');
+          s.className = v ? 'ok' : 'fail';
+          s.textContent = v ? `${k}: OK` : `${k}: FAIL`;
+          hs.appendChild(s);
+        }
+
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    async function refreshNow() {
+      await fetch('/refresh', { method: 'POST' });
+      alert('Refresh triggered ✅');
+      loadStats();
+    }
+
+    async function startWorker() {
+      await fetch('/start', { method: 'POST' });
+      alert('Worker started 🚀');
+      loadStats();
+    }
+
+    loadStats();
+    setInterval(loadStats, 30000); // auto-refresh every 30s
+  </script>
+
+  <!-- Rakuten Automate -->
+  <script type="text/javascript">
+  var _rakuten_automate = {
+    u1: "",
+    snippetURL: "https://automate-frontend.linksynergy.com/minified_logic.js",
+    automateURL: "https://automate.linksynergy.com",
+    widgetKey: "WsVFux3mFxYaWLOp9CYiuyzU7E78518q",
+    aelJS: null,
+    useDefaultAEL: false,
+    loaded: false,
+    events: []
+  };
+  var ael = window.addEventListener;
+  window.addEventListener = function(a,b,c,d){
+    "click" !== a && _rakuten_automate.useDefaultAEL ?
+      ael(a,b,c) :
+      _rakuten_automate.events.push({type:a,handler:b,capture:c,rakuten:d});
+  };
+  _rakuten_automate.links = {};
+  var httpRequest = new XMLHttpRequest;
+  httpRequest.open("GET", _rakuten_automate.snippetURL, !0);
+  httpRequest.timeout = 5E3;
+  httpRequest.ontimeout = function(){
+    if(!_rakuten_automate.loaded){
+      for(i=0;i<_rakuten_automate.events.length;i++){
+        var a=_rakuten_automate.events[i];
+        ael(a.type,a.handler,a.capture)
+      }
+      _rakuten_automate.useDefaultAEL=!0
+    }
+  };
+  httpRequest.onreadystatechange=function(){
+    httpRequest.readyState===XMLHttpRequest.DONE&&200===httpRequest.status&&(eval(httpRequest.responseText),_rakuten_automate.run(ael))
+  };
+  httpRequest.send(null);
+  </script>
 </body>
 </html>
