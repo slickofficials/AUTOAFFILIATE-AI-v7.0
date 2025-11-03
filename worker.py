@@ -455,6 +455,58 @@ def stop_worker():
     logger.info("Stop requested")
     _stop_requested = True
 
+def make_test_post():
+    """
+    One-time test post to all social media networks (manual trigger from dashboard).
+    Pulls one fresh link, generates caption + video, posts everywhere.
+    """
+    logger.info("make_test_post() — starting manual post")
+    try:
+        links = pull_awin_deeplinks(limit=1)
+        if not links:
+            links = pull_rakuten_deeplinks(limit=1)
+        if not links:
+            send_alert("TEST POST FAILED", "No links from AWIN or Rakuten")
+            return False
+
+        link = links[0]
+        caption = generate_caption(link)
+        caption_with_link = f"{caption}\n{link}"
+
+        video_ref = generate_heygen_avatar_video(caption) if HEYGEN_KEY else None
+        video_host_url = (
+            video_ref if (video_ref and isinstance(video_ref, str) and video_ref.startswith("http")) else None
+        )
+
+        success = False
+        try:
+            if post_facebook(caption_with_link): success = True
+        except Exception: logger.exception("FB test failed")
+        try:
+            if post_instagram(caption_with_link): success = True
+        except Exception: logger.exception("IG test failed")
+        try:
+            if post_twitter(caption_with_link): success = True
+        except Exception: logger.exception("Twitter test failed")
+        try:
+            if post_telegram(caption_with_link): success = True
+        except Exception: logger.exception("Telegram test failed")
+        try:
+            trigger_ifttt("Post_TikTok", value1=caption, value2=link)
+        except Exception: logger.exception("IFTTT test failed")
+        if video_host_url:
+            try:
+                post_youtube_short(caption, video_host_url)
+            except Exception: logger.exception("YouTube test failed")
+
+        send_alert("TEST POST", f"Success={success}, link={link}")
+        logger.info("make_test_post() — done, success=%s", success)
+        return success
+    except Exception:
+        logger.exception("make_test_post() fatal error")
+        send_alert("TEST POST FAILED", "Unhandled exception")
+        return False
+
 if __name__ == "__main__":
     # if run directly — start worker loop
     start_worker_background()
