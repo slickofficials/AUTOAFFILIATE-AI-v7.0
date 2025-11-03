@@ -8,96 +8,88 @@
   <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    :root {
+      --bg: #f8f9fa;
+      --text: #212529;
+      --card-bg: #ffffff;
+      --navbar-bg: linear-gradient(90deg, #007aff, #00b7ff);
+      --btn-primary: #007aff;
+      --btn-danger: #ff3b30;
+      --btn-success: #34c759;
+      --btn-warning: #ffcc00;
+      --chart1: #007aff;
+      --chart2: #34c759;
+      --chart3: #ff3b30;
+    }
+    body.dark {
+      --bg: #121212;
+      --text: #f1f1f1;
+      --card-bg: #1e1e1e;
+      --navbar-bg: linear-gradient(90deg, #0a84ff, #5ac8fa);
+      --btn-primary: #0a84ff;
+      --btn-danger: #ff453a;
+      --btn-success: #32d74b;
+      --btn-warning: #ffd60a;
+      --chart1: #0a84ff;
+      --chart2: #32d74b;
+      --chart3: #ff453a;
+    }
     body {
-      background: #f8f9fa;
+      background: var(--bg);
+      color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      color: #212529;
+      transition: background 0.3s ease, color 0.3s ease;
     }
     .navbar {
-      background: linear-gradient(90deg, #007aff, #00b7ff);
+      background: var(--navbar-bg);
       color: white;
       box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    .navbar-brand {
-      font-weight: 600;
-      color: white !important;
+    .navbar-brand { color: white !important; font-weight: 600; }
+    .theme-toggle {
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      color: white;
+      cursor: pointer;
     }
     .card {
+      background: var(--card-bg);
       border: none;
       border-radius: 16px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-      transition: transform 0.2s ease-in-out;
+      transition: transform 0.2s ease-in-out, background 0.3s ease;
     }
-    .card:hover {
-      transform: translateY(-3px);
-    }
-    .btn {
-      border-radius: 12px;
-    }
-    .btn-primary {
-      background: #007aff;
-      border: none;
-    }
-    .btn-danger {
-      background: #ff3b30;
-      border: none;
-    }
-    .btn-success {
-      background: #34c759;
-      border: none;
-    }
-    .btn-warning {
-      background: #ffcc00;
-      border: none;
-      color: #000;
-    }
-    .chart-container {
-      height: 300px;
-    }
+    .card:hover { transform: translateY(-3px); }
+    .btn { border-radius: 12px; color: white; }
+    .btn-primary { background: var(--btn-primary); border: none; }
+    .btn-danger { background: var(--btn-danger); border: none; }
+    .btn-success { background: var(--btn-success); border: none; }
+    .btn-warning { background: var(--btn-warning); border: none; color: #000; }
+    .chart-container { height: 300px; }
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg px-3">
+  <nav class="navbar navbar-expand-lg px-3 d-flex justify-content-between align-items-center">
     <a class="navbar-brand" href="#">⚡ {{ company or "Slick Officials HQ" }}</a>
-    <div class="ms-auto">
-      <button class="btn btn-light btn-sm" id="refreshStats">🔄 Refresh Stats</button>
+    <div class="d-flex align-items-center">
+      <button class="btn btn-light btn-sm me-2" id="refreshStats">🔄</button>
+      <button class="theme-toggle" id="themeToggle" title="Toggle Theme">🌙</button>
     </div>
   </nav>
 
   <div class="container py-4">
     <div class="row text-center mb-4">
-      <div class="col-md-3 mb-3">
-        <div class="card p-3">
-          <h6>Pending</h6>
-          <h3 id="pending">{{ pending }}</h3>
-        </div>
-      </div>
-      <div class="col-md-3 mb-3">
-        <div class="card p-3">
-          <h6>Sent</h6>
-          <h3 id="sent">{{ sent }}</h3>
-        </div>
-      </div>
-      <div class="col-md-3 mb-3">
-        <div class="card p-3">
-          <h6>Failed</h6>
-          <h3 id="failed">{{ failed }}</h3>
-        </div>
-      </div>
-      <div class="col-md-3 mb-3">
-        <div class="card p-3">
-          <h6>Last Pull</h6>
-          <h3>{{ last_pull }}</h3>
-        </div>
-      </div>
+      <div class="col-md-3 mb-3"><div class="card p-3"><h6>Pending</h6><h3 id="pending">0</h3></div></div>
+      <div class="col-md-3 mb-3"><div class="card p-3"><h6>Sent</h6><h3 id="sent">0</h3></div></div>
+      <div class="col-md-3 mb-3"><div class="card p-3"><h6>Failed</h6><h3 id="failed">0</h3></div></div>
+      <div class="col-md-3 mb-3"><div class="card p-3"><h6>Last Pull</h6><h3 id="lastPull">–</h3></div></div>
     </div>
 
     <div class="row mb-4">
       <div class="col-md-12">
         <div class="card p-4">
-          <div class="chart-container">
-            <canvas id="activityChart"></canvas>
-          </div>
+          <div class="chart-container"><canvas id="activityChart"></canvas></div>
         </div>
       </div>
     </div>
@@ -108,11 +100,11 @@
           <h5>🔥 Bot Controls</h5>
           <form method="POST" action="/start">
             <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
-            <button type="submit" class="btn btn-success">Start Bot</button>
+            <button type="submit" class="btn btn-success w-100">Start Bot</button>
           </form>
           <form method="POST" action="/stop" class="mt-2">
             <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
-            <button type="submit" class="btn btn-danger">Stop Bot</button>
+            <button type="submit" class="btn btn-danger w-100">Stop Bot</button>
           </form>
         </div>
       </div>
@@ -137,6 +129,22 @@
   </div>
 
   <script>
+    // Theme handling
+    const body = document.body;
+    const themeToggle = document.getElementById("themeToggle");
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme === "dark") body.classList.add("dark");
+
+    function toggleTheme() {
+      body.classList.toggle("dark");
+      const mode = body.classList.contains("dark") ? "dark" : "light";
+      localStorage.setItem("theme", mode);
+      themeToggle.textContent = mode === "dark" ? "☀️" : "🌙";
+    }
+
+    themeToggle.addEventListener("click", toggleTheme);
+    themeToggle.textContent = body.classList.contains("dark") ? "☀️" : "🌙";
+
     const ctx = document.getElementById("activityChart");
     let chart;
 
@@ -147,6 +155,7 @@
         document.getElementById("pending").textContent = data.pending;
         document.getElementById("sent").textContent = data.sent;
         document.getElementById("failed").textContent = data.failed;
+        document.getElementById("lastPull").textContent = data.last_pull || "–";
         updateChart(["Pending", "Sent", "Failed"], [data.pending, data.sent, data.failed]);
       } catch (err) {
         console.error("Error loading stats:", err);
@@ -161,7 +170,7 @@
           labels,
           datasets: [{
             data: values,
-            backgroundColor: ["#007aff", "#34c759", "#ff3b30"],
+            backgroundColor: [getVar("--chart1"), getVar("--chart2"), getVar("--chart3")],
             borderWidth: 0
           }]
         },
@@ -169,8 +178,11 @@
       });
     }
 
-    document.getElementById("refreshStats").addEventListener("click", loadStatus);
+    function getVar(name) {
+      return getComputedStyle(document.body).getPropertyValue(name).trim();
+    }
 
+    document.getElementById("refreshStats").addEventListener("click", loadStatus);
     document.getElementById("refreshForm").addEventListener("submit", async e => {
       e.preventDefault();
       const formData = new FormData(e.target);
