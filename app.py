@@ -253,6 +253,18 @@ def enqueue_route():
         logger.exception("enqueue failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/testpost", methods=["POST"])
+@login_required
+def test_post_route():
+    """Manually trigger a one-time test post to all connected social media."""
+    try:
+        from worker import make_test_post
+        Thread(target=make_test_post, daemon=True).start()
+        return jsonify({"status": "test_post_triggered"}), 202
+    except Exception as e:
+        logger.exception("testpost failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/start", methods=["POST","GET"])
 @login_required
 def start_worker():
