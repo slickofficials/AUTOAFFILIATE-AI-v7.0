@@ -9,69 +9,85 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
     body {
-      background: radial-gradient(circle at top left, #0b0c10, #1f2833);
-      color: #c5c6c7;
-      font-family: 'Segoe UI', sans-serif;
+      background: #f8f9fa;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #212529;
+    }
+    .navbar {
+      background: linear-gradient(90deg, #007aff, #00b7ff);
+      color: white;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .navbar-brand {
+      font-weight: 600;
+      color: white !important;
     }
     .card {
-      background: #1f2833;
-      border: 1px solid #45a29e;
-      border-radius: 1rem;
-      box-shadow: 0 0 10px rgba(69,162,158,0.5);
+      border: none;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
       transition: transform 0.2s ease-in-out;
     }
-    .card:hover { transform: scale(1.02); }
-    .btn-primary { background: #45a29e; border: none; }
-    .btn-primary:hover { background: #66fcf1; color: #0b0c10; }
-    .navbar { background: #0b0c10; }
-    .chart-container { width: 100%; height: 350px; }
-    #alertBox {
-      position: fixed;
-      top: 20px; right: 20px;
-      background: #45a29e;
-      color: #0b0c10;
-      padding: 10px 20px;
-      border-radius: 8px;
-      font-weight: bold;
-      display: none;
-      z-index: 9999;
+    .card:hover {
+      transform: translateY(-3px);
+    }
+    .btn {
+      border-radius: 12px;
+    }
+    .btn-primary {
+      background: #007aff;
+      border: none;
+    }
+    .btn-danger {
+      background: #ff3b30;
+      border: none;
+    }
+    .btn-success {
+      background: #34c759;
+      border: none;
+    }
+    .btn-warning {
+      background: #ffcc00;
+      border: none;
+      color: #000;
+    }
+    .chart-container {
+      height: 300px;
     }
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="#">⚡ {{ company or "Slick Officials HQ" }}</a>
-      <button class="btn btn-sm btn-primary" id="refreshBtn">🔄 Refresh</button>
+  <nav class="navbar navbar-expand-lg px-3">
+    <a class="navbar-brand" href="#">⚡ {{ company or "Slick Officials HQ" }}</a>
+    <div class="ms-auto">
+      <button class="btn btn-light btn-sm" id="refreshStats">🔄 Refresh Stats</button>
     </div>
   </nav>
 
-  <div id="alertBox"></div>
-
   <div class="container py-4">
-    <div class="row mb-4">
-      <div class="col-md-3">
-        <div class="card text-center p-3">
-          <h5>Total Clicks</h5>
-          <h2 id="clicks">0</h2>
+    <div class="row text-center mb-4">
+      <div class="col-md-3 mb-3">
+        <div class="card p-3">
+          <h6>Pending</h6>
+          <h3 id="pending">{{ pending }}</h3>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card text-center p-3">
-          <h5>Conversions</h5>
-          <h2 id="conversions">0</h2>
+      <div class="col-md-3 mb-3">
+        <div class="card p-3">
+          <h6>Sent</h6>
+          <h3 id="sent">{{ sent }}</h3>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card text-center p-3">
-          <h5>Revenue</h5>
-          <h2 id="revenue">$0.00</h2>
+      <div class="col-md-3 mb-3">
+        <div class="card p-3">
+          <h6>Failed</h6>
+          <h3 id="failed">{{ failed }}</h3>
         </div>
       </div>
-      <div class="col-md-3">
-        <div class="card text-center p-3">
-          <h5>Last Post</h5>
-          <h2 id="lastPost">Never</h2>
+      <div class="col-md-3 mb-3">
+        <div class="card p-3">
+          <h6>Last Pull</h6>
+          <h3>{{ last_pull }}</h3>
         </div>
       </div>
     </div>
@@ -86,113 +102,92 @@
       </div>
     </div>
 
-    <div class="row">
-      <div class="col-md-4">
-        <div class="card p-4 text-center">
+    <div class="row text-center">
+      <div class="col-md-6 mb-3">
+        <div class="card p-4">
           <h5>🔥 Bot Controls</h5>
-          <p>Start or pause automation instantly.</p>
-          <button class="btn btn-success m-1" id="startBot">Start Bot</button>
-          <button class="btn btn-danger m-1" id="stopBot">Stop Bot</button>
+          <form method="POST" action="/start">
+            <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
+            <button type="submit" class="btn btn-success">Start Bot</button>
+          </form>
+          <form method="POST" action="/stop" class="mt-2">
+            <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
+            <button type="submit" class="btn btn-danger">Stop Bot</button>
+          </form>
         </div>
       </div>
+      <div class="col-md-6 mb-3">
+        <div class="card p-4">
+          <h5>⚙️ Admin Tools</h5>
+          <form id="refreshForm">
+            <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
+            <button class="btn btn-primary w-100 mb-2" type="submit">Refresh Offers</button>
+          </form>
+          <form id="debugForm">
+            <input type="password" name="password" placeholder="Admin Password" class="form-control mb-2" required>
+            <button class="btn btn-warning w-100" type="submit">Toggle Debug Mode</button>
+          </form>
+        </div>
+      </div>
+    </div>
 
-      <div class="col-md-4">
-        <div class="card p-4 text-center">
-          <h5>⚙️ Posting Frequency</h5>
-          <select class="form-select mb-3" id="intervalSelect">
-            <option value="5">Every 5 mins</option>
-            <option value="15">Every 15 mins</option>
-            <option value="30">Every 30 mins</option>
-            <option value="60">Every hour</option>
-          </select>
-          <button class="btn btn-primary" id="updateInterval">Update Interval</button>
-        </div>
-      </div>
-
-      <div class="col-md-4">
-        <div class="card p-4 text-center">
-          <h5>🚀 Test Auto Post</h5>
-          <p>Instantly trigger a full multi-platform test post.</p>
-          <button class="btn btn-warning" id="testPost">Run Test Post</button>
-        </div>
-      </div>
+    <div class="text-center mt-4">
+      <a href="/logs" target="_blank" class="btn btn-outline-secondary">📜 View Logs</a>
     </div>
   </div>
 
   <script>
-    const clicks = document.getElementById('clicks');
-    const conversions = document.getElementById('conversions');
-    const revenue = document.getElementById('revenue');
-    const lastPost = document.getElementById('lastPost');
-    const alertBox = document.getElementById('alertBox');
+    const ctx = document.getElementById("activityChart");
+    let chart;
 
-    function showAlert(msg, success=true) {
-      alertBox.textContent = msg;
-      alertBox.style.background = success ? '#45a29e' : '#ff4c4c';
-      alertBox.style.display = 'block';
-      setTimeout(() => alertBox.style.display = 'none', 4000);
-    }
-
-    async function loadStats() {
+    async function loadStatus() {
       try {
-        const res = await axios.get('/api/stats');
+        const res = await axios.get("/status");
         const data = res.data;
-        clicks.textContent = data.clicks;
-        conversions.textContent = data.conversions;
-        revenue.textContent = '$' + data.revenue.toFixed(2);
-        lastPost.textContent = data.last_post_time || 'Never';
-        updateChart(data.chart_labels, data.chart_values);
+        document.getElementById("pending").textContent = data.pending;
+        document.getElementById("sent").textContent = data.sent;
+        document.getElementById("failed").textContent = data.failed;
+        updateChart(["Pending", "Sent", "Failed"], [data.pending, data.sent, data.failed]);
       } catch (err) {
-        console.error('Error loading stats:', err);
+        console.error("Error loading stats:", err);
       }
     }
 
-    let chart;
     function updateChart(labels, values) {
-      const ctx = document.getElementById('activityChart').getContext('2d');
       if (chart) chart.destroy();
       chart = new Chart(ctx, {
-        type: 'line',
+        type: "doughnut",
         data: {
-          labels: labels,
+          labels,
           datasets: [{
-            label: 'Posts per Hour',
             data: values,
-            borderColor: '#45a29e',
-            backgroundColor: 'rgba(69,162,158,0.3)',
-            fill: true,
-            tension: 0.3
+            backgroundColor: ["#007aff", "#34c759", "#ff3b30"],
+            borderWidth: 0
           }]
-        }
+        },
+        options: { responsive: true, cutout: "75%" }
       });
     }
 
-    document.getElementById('refreshBtn').addEventListener('click', loadStats);
-    document.getElementById('startBot').addEventListener('click', async () => {
-      await axios.post('/api/control', { action: 'start' });
-      showAlert('✅ Bot started successfully!');
-      loadStats();
-    });
-    document.getElementById('stopBot').addEventListener('click', async () => {
-      await axios.post('/api/control', { action: 'stop' });
-      showAlert('⛔ Bot stopped.', false);
-    });
-    document.getElementById('updateInterval').addEventListener('click', async () => {
-      const val = document.getElementById('intervalSelect').value;
-      await axios.post('/api/interval', { interval: val });
-      showAlert('Interval updated to ' + val + ' mins');
-    });
-    document.getElementById('testPost').addEventListener('click', async () => {
-      try {
-        await axios.post('/testpost');
-        showAlert('🚀 Test post triggered!');
-      } catch (err) {
-        console.error('Test post error:', err);
-        showAlert('Test post failed!', false);
-      }
+    document.getElementById("refreshStats").addEventListener("click", loadStatus);
+
+    document.getElementById("refreshForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await axios.post("/refresh", Object.fromEntries(formData));
+      alert(res.data.message);
+      loadStatus();
     });
 
-    loadStats();
+    document.getElementById("debugForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await axios.post("/toggle_debug", Object.fromEntries(formData));
+      alert(res.data.message);
+    });
+
+    loadStatus();
+    setInterval(loadStatus, 15000);
   </script>
 </body>
 </html>
