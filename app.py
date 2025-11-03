@@ -1,130 +1,323 @@
-# app.py — AutoAffiliate Dashboard (v3, with debug toggle & worker integration)
-
+# app.py — AutoAffiliate HQ (Flask + Dashboard)
 import os
-import threading
 import logging
-from datetime import datetime, timezone
-from flask import Flask, render_template, request, redirect, url_for, jsonify
+from datetime import datetime, timezone, timedelta
+from threading import Thread
+
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, send_from_directory, abort
+from flask_compress import Compress
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user
 import psycopg
 from psycopg.rows import dict_row
-import worker  # import your worker.py in the same directory
 
-app = Flask(__name__)
-
-# Setup logging
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
-logger = logging.getLogger("dashboard")
+logger = logging.getLogger("app")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-ADMIN_PASS = os.getenv("ADMIN_PASS", "admin123")
-DEBUG_REDIRECTS = os.getenv("DEBUG_LOG_REDIRECTS", "False").lower() == "true"
+app = Flask(__name__, template_folder="templates", static_folder="static")
+app.secret_key = os.getenv("SECRET_KEY", "slickofficials_hq_2025")
+Compress(app)
 
-def get_db_conn():
-    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+COMPANY = os.getenv("COMPANY_NAME", "SlickOfficials HQ | Amson Multi Global LTD")
+CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@slickofficials.com")
+APP_PUBLIC_URL = os.getenv("APP_PUBLIC_URL") or os.getenv("PUBLIC_URL") or ""
+
+# Auth
+ALLOWED_EMAIL = os.getenv("ALLOWED_EMAIL", "admin@example.com")
+ADMIN_PASS = os.getenv("ADMIN_PASS", "12345")
+failed_logins = {}
+LOCKOUT_DURATION = timedelta(hours=int(os.getenv("LOCKOUT_HOURS", "24")))
+MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "10"))
+
+# DB helper
+DB_URL = os.getenv("DATABASE_URL")
+def get_db():
+    if not DB_URL:
+        raise RuntimeError("DATABASE_URL not set")
+    conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-# ========== ROUTES ==========
+# Flask-Login
+class User(UserMixin):
+    def __init__(self, email): self.id = email
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"
+
+@login_manager.user_loader
+def load_user(user_id):
+    if user_id == ALLOWED_EMAIL:
+        return User(user_id)
+    return None
+
+def send_alert_stub(title, body):
+    # app-level stub; worker sends real notifications
+    logger.info("[ALERT] %s: %s", title, body)
+
+@app.after_request
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Cache-Control"] = "no-store, must-revalidate"
+    return response
+
+@app.route("/sitemap.xml")
+def sitemap():
+    return send_from_directory(".", "sitemap.xml")
+
+@app.route("/robots.txt")
+def robots():
+    return send_from_directory(".", "robots.txt")
 
 @app.route("/")
+def welcome():
+    return render_template("welcome.html", company=COMPANY, title="Welcome")
+
+@app.route("/login", methods=["GET","POST"])
+def login():
+    if request.method == "GET":
+        return render_template("login.html", company=COMPANY, title="Private Login")
+    email = (request.form.get("email") or request.form.get("username") or "").strip().lower()
+    password = request.form.get("password","")
+    if not email or not password:
+        flash("Missing login fields.")
+        return render_template("login.html", company=COMPANY, title="Private Login")
+    client_ip = request.remote_addr or "unknown"
+    if client_ip not in failed_logins:
+        failed_logins[client_ip] = {"count": 0, "locked_until": None}
+    now = datetime.now(timezone.utc)
+    locked_until = failed_logins[client_ip]["locked_until"]
+    if locked_until and locked_until > now:
+        mins = int((locked_until - now).total_seconds() // 60)
+        flash(f"Locked out. Try again in {mins} minutes.")
+        return render_template("login.html", company=COMPANY, title="Private Login")
+    if email == ALLOWED_EMAIL and password == ADMIN_PASS:
+        if client_ip in failed_logins:
+            del failed_logins[client_ip]
+        user = User(email); login_user(user)
+        logger.info("Login success: %s", email)
+        Thread(target=trigger_refresh_background, daemon=True).start()
+        return redirect(url_for("dashboard"))
+    else:
+        failed_logins[client_ip]["count"] += 1
+        left = MAX_ATTEMPTS - failed_logins[client_ip]["count"]
+        if failed_logins[client_ip]["count"] >= 3:
+            send_alert_stub("FAILED LOGIN", f"Attempt #{failed_logins[client_ip]['count']}\nEmail: {email}")
+        if left <= 0:
+            failed_logins[client_ip]["locked_until"] = now + LOCKOUT_DURATION
+            send_alert_stub("LOCKED OUT", "Too many failed login attempts")
+            flash("BANNED: 24hr lock.")
+        else:
+            flash(f"Invalid credentials. {left} attempts left.")
+        return render_template("login.html", company=COMPANY, title="Private Login")
+
+@app.route("/dashboard")
+@login_required
 def dashboard():
-    """Main dashboard view"""
-    conn, cur = get_db_conn()
-    cur.execute("SELECT COUNT(*) FROM posts WHERE status='pending'")
-    pending = cur.fetchone()["count"]
+    # templates/dashboard.html should fetch /api/stats and /api/control as needed
+    return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL)
 
-    cur.execute("SELECT COUNT(*) FROM posts WHERE status='sent'")
-    sent = cur.fetchone()["count"]
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    send_alert_stub("LOGOUT", "User logged out")
+    return redirect(url_for("welcome"))
 
-    cur.execute("SELECT COUNT(*) FROM posts WHERE status='failed'")
-    failed = cur.fetchone()["count"]
+# redirect tracking
+@app.route("/r/<int:post_id>")
+def redirect_tracking(post_id):
+    try:
+        conn, cur = get_db()
+        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            abort(404)
+        real = row["url"]
+        cur.execute(
+            "INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)",
+            (post_id, request.remote_addr or "unknown", request.headers.get("User-Agent",""), datetime.now(timezone.utc))
+        )
+        conn.commit()
+        conn.close()
+        return redirect(real, code=302)
+    except Exception as e:
+        logger.exception("Redirect error: %s", e)
+        abort(500)
 
-    cur.execute("SELECT * FROM posts ORDER BY created_at DESC LIMIT 10")
-    recent = cur.fetchall()
-    conn.close()
+# API: stats
+@app.route("/api/stats")
+@login_required
+def api_stats():
+    stat = {
+        "total_links": 0, "pending":0, "sent":0, "failed":0,
+        "last_posted_at": None, "next_post_in_seconds": None, "clicks_total":0,
+        "top_links": [], "recent_posts": [], "statuses": {}
+    }
+    try:
+        conn, cur = get_db()
+        cur.execute("SELECT COUNT(*) as c FROM posts")
+        stat["total_links"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='pending'")
+        stat["pending"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='sent'")
+        stat["sent"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='failed'")
+        stat["failed"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT posted_at FROM posts WHERE status='sent' ORDER BY posted_at DESC LIMIT 1")
+        row = cur.fetchone()
+        if row and row["posted_at"]:
+            stat["last_posted_at"] = row["posted_at"].astimezone(timezone.utc).isoformat()
+        cur.execute("SELECT COUNT(*) as c FROM clicks")
+        stat["clicks_total"] = cur.fetchone()["c"] or 0
 
-    last_pull = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    return render_template(
-        "dashboard.html",
-        pending=pending,
-        sent=sent,
-        failed=failed,
-        recent=recent,
-        running=worker._worker_running,
-        debug=DEBUG_REDIRECTS,
-        last_pull=last_pull,
-    )
+        # top links
+        cur.execute("""
+            SELECT p.id, p.url, COUNT(c.id) AS clicks
+            FROM posts p LEFT JOIN clicks c ON c.post_id = p.id
+            GROUP BY p.id ORDER BY clicks DESC NULLS LAST LIMIT 6
+        """)
+        rows = cur.fetchall()
+        top = []
+        for r in rows:
+            top.append({"id": r["id"], "url": r["url"], "clicks": int(r["clicks"] or 0)})
+        stat["top_links"] = top
 
+        # recent posts
+        cur.execute("SELECT id, url, status, posted_at FROM posts ORDER BY created_at DESC LIMIT 10")
+        rp = cur.fetchall()
+        recent = []
+        for r in rp:
+            recent.append({
+                "id": r["id"], "url": r["url"], "status": r["status"],
+                "posted_at": r["posted_at"].astimezone(timezone.utc).isoformat() if r["posted_at"] else None
+            })
+        stat["recent_posts"] = recent
 
-@app.route("/start", methods=["POST"])
+        stat["statuses"] = {
+            "awin": bool(os.getenv("AWIN_PUBLISHER_ID")),
+            "rakuten": bool(os.getenv("RAKUTEN_CLIENT_ID")),
+            "openai": bool(os.getenv("OPENAI_API_KEY")),
+            "heygen": bool(os.getenv("HEYGEN_API_KEY")),
+            "twilio": bool(os.getenv("TWILIO_SID") and os.getenv("TWILIO_TOKEN"))
+        }
+        conn.close()
+
+        # next_post calculation (based on last_posted_at and interval)
+        interval = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
+        if stat["last_posted_at"]:
+            last = datetime.fromisoformat(stat["last_posted_at"])
+            last_ts = last.replace(tzinfo=timezone.utc).timestamp()
+            now_ts = datetime.now(timezone.utc).timestamp()
+            elapsed = now_ts - last_ts
+            stat["next_post_in_seconds"] = max(0, interval - int(elapsed))
+        else:
+            stat["next_post_in_seconds"] = 0
+
+    except Exception:
+        logger.exception("api_stats error")
+    return jsonify(stat)
+
+# Admin actions (refresh/enqueue/start/stop)
+def trigger_refresh_background():
+    try:
+        from worker import refresh_all_sources
+        saved = refresh_all_sources()
+        logger.info("Manual refresh saved %s links", saved)
+    except Exception:
+        logger.exception("Manual refresh failed")
+
+@app.route("/refresh", methods=["POST","GET"])
+@login_required
+def refresh_route():
+    Thread(target=trigger_refresh_background, daemon=True).start()
+    return jsonify({"status":"refresh_queued"}), 202
+
+@app.route("/enqueue", methods=["POST"])
+@login_required
+def enqueue_route():
+    data = request.get_json() or {}
+    url = data.get("url")
+    if not url:
+        return jsonify({"error":"url required"}), 400
+    try:
+        from worker import enqueue_manual_link
+        result = enqueue_manual_link(url)
+        return jsonify({"enqueued": True, "result": result}), 202
+    except Exception as e:
+        logger.exception("enqueue failed: %s", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/start", methods=["POST","GET"])
+@login_required
 def start_worker():
-    password = request.form.get("password")
-    if password != ADMIN_PASS:
-        return jsonify({"error": "Invalid password"}), 403
-    threading.Thread(target=worker.start_worker_background, daemon=True).start()
-    return redirect(url_for("dashboard"))
+    from worker import start_worker_background
+    Thread(target=start_worker_background, daemon=True).start()
+    return jsonify({"status":"worker_start_requested"}), 202
 
+@app.route("/stop", methods=["POST","GET"])
+@login_required
+def stop_worker_route():
+    try:
+        import worker
+        worker.stop_worker()
+        return jsonify({"status":"worker_stop_requested"}), 200
+    except Exception as e:
+        logger.exception("stop failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/stop", methods=["POST"])
-def stop_worker():
-    password = request.form.get("password")
-    if password != ADMIN_PASS:
-        return jsonify({"error": "Invalid password"}), 403
-    worker.stop_worker()
-    return redirect(url_for("dashboard"))
+# API endpoints used by dashboard controls
+@app.route("/api/control", methods=["POST"])
+@login_required
+def api_control():
+    data = request.get_json() or {}
+    action = data.get("action")
+    if not action:
+        return jsonify({"error": "action required"}), 400
+    try:
+        import worker
+        if action == "start":
+            Thread(target=worker.start_worker_background, daemon=True).start()
+            return jsonify({"status":"started"}), 200
+        elif action == "stop":
+            worker.stop_worker()
+            return jsonify({"status":"stop_requested"}), 200
+        else:
+            return jsonify({"error":"unknown action"}), 400
+    except Exception as e:
+        logger.exception("api_control failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
+@app.route("/api/interval", methods=["POST"])
+@login_required
+def api_interval():
+    data = request.get_json() or {}
+    interval = data.get("interval")
+    if interval is None:
+        return jsonify({"error":"interval required (seconds)"}), 400
+    try:
+        import worker
+        ok = worker.set_post_interval_seconds(interval)
+        if ok:
+            return jsonify({"status":"interval_updated", "interval": int(interval)}), 200
+        else:
+            return jsonify({"error":"failed to set interval"}), 500
+    except Exception as e:
+        logger.exception("api_interval failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
-@app.route("/refresh", methods=["POST"])
-def manual_refresh():
-    password = request.form.get("password")
-    if password != ADMIN_PASS:
-        return jsonify({"error": "Invalid password"}), 403
-    count = worker.refresh_all_sources()
-    return jsonify({"message": f"Pulled and saved {count} offers."})
+@app.route("/health")
+def health():
+    return jsonify({"ok": True, "ts": datetime.now(timezone.utc).isoformat()}), 200
 
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("welcome.html", company=COMPANY), 404
 
-@app.route("/toggle_debug", methods=["POST"])
-def toggle_debug():
-    global DEBUG_REDIRECTS
-    password = request.form.get("password")
-    if password != ADMIN_PASS:
-        return jsonify({"error": "Invalid password"}), 403
-    DEBUG_REDIRECTS = not DEBUG_REDIRECTS
-    os.environ["DEBUG_LOG_REDIRECTS"] = str(DEBUG_REDIRECTS)
-    return jsonify({"message": f"Debug mode set to {DEBUG_REDIRECTS}"})
-
-
-@app.route("/logs")
-def logs():
-    """Read last 100 lines of log file if available"""
-    log_file = "worker.log"
-    if not os.path.exists(log_file):
-        return "No logs yet"
-    with open(log_file, "r", encoding="utf-8") as f:
-        lines = f.readlines()[-100:]
-    return "<pre>" + "".join(lines) + "</pre>"
-
-
-@app.route("/status")
-def status():
-    """Return worker status (AJAX friendly)"""
-    return jsonify({
-        "running": worker._worker_running,
-        "pending": get_count("pending"),
-        "sent": get_count("sent"),
-        "failed": get_count("failed"),
-        "debug": DEBUG_REDIRECTS
-    })
-
-
-def get_count(status):
-    conn, cur = get_db_conn()
-    cur.execute("SELECT COUNT(*) FROM posts WHERE status=%s", (status,))
-    count = cur.fetchone()["count"]
-    conn.close()
-    return count
-
-
-# ========== MAIN ==========
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)), debug=True)
+    port = int(os.getenv("PORT", 10000))
+    logger.info("Starting app on port %s", port)
+    app.run(host="0.0.0.0", port=port, debug=False)
