@@ -51,8 +51,8 @@ def load_user(user_id):
         return User(user_id)
     return None
 
+# Minimal alert helper (app keeps as log; worker sends real Twilio/Telegram)
 def send_alert_stub(title, body):
-    # app-level stub; worker sends real notifications
     logger.info("[ALERT] %s: %s", title, body)
 
 @app.after_request
@@ -63,6 +63,7 @@ def add_security_headers(response):
     response.headers["Cache-Control"] = "no-store, must-revalidate"
     return response
 
+# Static files endpoints (optional)
 @app.route("/sitemap.xml")
 def sitemap():
     return send_from_directory(".", "sitemap.xml")
@@ -71,6 +72,7 @@ def sitemap():
 def robots():
     return send_from_directory(".", "robots.txt")
 
+# Basic pages
 @app.route("/")
 def welcome():
     return render_template("welcome.html", company=COMPANY, title="Welcome")
@@ -98,6 +100,7 @@ def login():
             del failed_logins[client_ip]
         user = User(email); login_user(user)
         logger.info("Login success: %s", email)
+        # start a one-off refresh in background for convenience
         Thread(target=trigger_refresh_background, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
@@ -116,7 +119,7 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # templates/dashboard.html should fetch /api/stats and /api/control as needed
+    # templates/dashboard.html should fetch /api/stats via JS to populate values.
     return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL)
 
 @app.route("/logout")
@@ -126,7 +129,7 @@ def logout():
     send_alert_stub("LOGOUT", "User logged out")
     return redirect(url_for("welcome"))
 
-# redirect tracking
+# Redirect + click logging
 @app.route("/r/<int:post_id>")
 def redirect_tracking(post_id):
     try:
@@ -137,6 +140,7 @@ def redirect_tracking(post_id):
             conn.close()
             abort(404)
         real = row["url"]
+        # record click
         cur.execute(
             "INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)",
             (post_id, request.remote_addr or "unknown", request.headers.get("User-Agent",""), datetime.now(timezone.utc))
@@ -148,14 +152,16 @@ def redirect_tracking(post_id):
         logger.exception("Redirect error: %s", e)
         abort(500)
 
-# API: stats
+# API for dashboard — returns fields expected by front-end
 @app.route("/api/stats")
 @login_required
 def api_stats():
     stat = {
         "total_links": 0, "pending":0, "sent":0, "failed":0,
-        "last_posted_at": None, "next_post_in_seconds": None, "clicks_total":0,
-        "top_links": [], "recent_posts": [], "statuses": {}
+        "last_post_time": None, "next_post_in_seconds": None, "clicks":0,
+        "conversions": 0, "revenue": 0.0,
+        "top_links": [], "recent_posts": [], "statuses": {},
+        "chart_labels": [], "chart_values": []
     }
     try:
         conn, cur = get_db()
@@ -170,11 +176,21 @@ def api_stats():
         cur.execute("SELECT posted_at FROM posts WHERE status='sent' ORDER BY posted_at DESC LIMIT 1")
         row = cur.fetchone()
         if row and row["posted_at"]:
-            stat["last_posted_at"] = row["posted_at"].astimezone(timezone.utc).isoformat()
+            stat["last_post_time"] = row["posted_at"].astimezone(timezone.utc).isoformat()
         cur.execute("SELECT COUNT(*) as c FROM clicks")
-        stat["clicks_total"] = cur.fetchone()["c"] or 0
+        stat["clicks"] = cur.fetchone()["c"] or 0
+        # placeholder conversions/revenue table (if you have earnings table, adapt)
+        try:
+            cur.execute("SELECT COUNT(*) as c FROM conversions")
+            stat["conversions"] = cur.fetchone()["c"] or 0
+            cur.execute("SELECT COALESCE(SUM(amount),0) as s FROM earnings")
+            stat["revenue"] = float(cur.fetchone()["s"] or 0.0)
+        except Exception:
+            # missing optional tables: skip
+            stat["conversions"] = 0
+            stat["revenue"] = 0.0
 
-        # top links
+        # top links by clicks
         cur.execute("""
             SELECT p.id, p.url, COUNT(c.id) AS clicks
             FROM posts p LEFT JOIN clicks c ON c.post_id = p.id
@@ -187,16 +203,18 @@ def api_stats():
         stat["top_links"] = top
 
         # recent posts
-        cur.execute("SELECT id, url, status, posted_at FROM posts ORDER BY created_at DESC LIMIT 10")
+        cur.execute("SELECT id, url, status, posted_at, created_at FROM posts ORDER BY created_at DESC LIMIT 10")
         rp = cur.fetchall()
         recent = []
         for r in rp:
             recent.append({
                 "id": r["id"], "url": r["url"], "status": r["status"],
-                "posted_at": r["posted_at"].astimezone(timezone.utc).isoformat() if r["posted_at"] else None
+                "posted_at": r["posted_at"].astimezone(timezone.utc).isoformat() if r["posted_at"] else None,
+                "created_at": r["created_at"].astimezone(timezone.utc).isoformat() if r["created_at"] else None
             })
         stat["recent_posts"] = recent
 
+        # statuses (health)
         stat["statuses"] = {
             "awin": bool(os.getenv("AWIN_PUBLISHER_ID")),
             "rakuten": bool(os.getenv("RAKUTEN_CLIENT_ID")),
@@ -204,25 +222,54 @@ def api_stats():
             "heygen": bool(os.getenv("HEYGEN_API_KEY")),
             "twilio": bool(os.getenv("TWILIO_SID") and os.getenv("TWILIO_TOKEN"))
         }
+
+        # Chart: simple posts-per-hour for last 12 hours
+        cur.execute("""
+            SELECT date_trunc('hour', COALESCE(posted_at, created_at)) AS hr,
+                   COUNT(*) AS cnt
+            FROM posts
+            WHERE COALESCE(created_at, now() at time zone 'utc') > (now() at time zone 'utc' - interval '12 hours')
+            GROUP BY hr ORDER BY hr ASC
+        """)
+        rows = cur.fetchall()
+        labels = []
+        values = []
+        for r in rows:
+            hr = r["hr"].astimezone(timezone.utc).strftime("%H:%M")
+            labels.append(hr)
+            values.append(int(r["cnt"] or 0))
+        stat["chart_labels"] = labels
+        stat["chart_values"] = values
+
         conn.close()
 
-        # next_post calculation (based on last_posted_at and interval)
-        interval = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
-        if stat["last_posted_at"]:
-            last = datetime.fromisoformat(stat["last_posted_at"])
-            last_ts = last.replace(tzinfo=timezone.utc).timestamp()
-            now_ts = datetime.now(timezone.utc).timestamp()
-            elapsed = now_ts - last_ts
-            stat["next_post_in_seconds"] = max(0, interval - int(elapsed))
-        else:
-            stat["next_post_in_seconds"] = 0
+        # compute next_post_in_seconds based on settings table if available
+        try:
+            conn, cur = get_db()
+            cur.execute("SELECT value FROM settings WHERE name='post_interval_seconds' LIMIT 1")
+            r = cur.fetchone()
+            interval = int(r["value"]) if r and r["value"] else int(os.getenv("POST_INTERVAL_SECONDS","3600"))
+            cur.execute("SELECT posted_at FROM posts WHERE status='sent' ORDER BY posted_at DESC LIMIT 1")
+            r2 = cur.fetchone()
+            if r2 and r2["posted_at"]:
+                last = r2["posted_at"].astimezone(timezone.utc)
+                elapsed = (datetime.now(timezone.utc) - last).total_seconds()
+                next_in = max(0, interval - int(elapsed))
+                stat["next_post_in_seconds"] = next_in
+            else:
+                stat["next_post_in_seconds"] = 0
+            conn.close()
+        except Exception:
+            stat["next_post_in_seconds"] = None
 
-    except Exception:
-        logger.exception("api_stats error")
+    except Exception as e:
+        logger.exception("api_stats error: %s", e)
+
     return jsonify(stat)
 
-# Admin actions (refresh/enqueue/start/stop)
+# Admin API actions
 def trigger_refresh_background():
+    # import worker functions lazily to avoid circular imports on startup
     try:
         from worker import refresh_all_sources
         saved = refresh_all_sources()
@@ -269,44 +316,61 @@ def stop_worker_route():
         logger.exception("stop failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# API endpoints used by dashboard controls
 @app.route("/api/control", methods=["POST"])
 @login_required
 def api_control():
+    """
+    Control endpoint used by dashboard JS:
+    { action: "start" | "stop" }
+    """
     data = request.get_json() or {}
     action = data.get("action")
-    if not action:
-        return jsonify({"error": "action required"}), 400
+    if action not in ("start","stop"):
+        return jsonify({"error":"action must be 'start' or 'stop'"}), 400
     try:
-        import worker
         if action == "start":
-            Thread(target=worker.start_worker_background, daemon=True).start()
-            return jsonify({"status":"started"}), 200
-        elif action == "stop":
-            worker.stop_worker()
-            return jsonify({"status":"stop_requested"}), 200
+            Thread(target=start_worker_background, daemon=True).start()
+            return jsonify({"status":"worker_start_requested"}), 202
         else:
-            return jsonify({"error":"unknown action"}), 400
+            import worker
+            worker.stop_worker()
+            return jsonify({"status":"worker_stop_requested"}), 200
     except Exception as e:
-        logger.exception("api_control failed: %s", e)
+        logger.exception("control failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/interval", methods=["POST"])
 @login_required
 def api_interval():
+    """
+    Change posting interval. payload: { interval: seconds_or_minutes_int, unit: 'minutes'|'seconds' (optional) }
+    We'll store seconds in settings.post_interval_seconds.
+    """
     data = request.get_json() or {}
     interval = data.get("interval")
+    unit = data.get("unit", "minutes")
     if interval is None:
-        return jsonify({"error":"interval required (seconds)"}), 400
+        return jsonify({"error":"interval required"}), 400
     try:
-        import worker
-        ok = worker.set_post_interval_seconds(interval)
-        if ok:
-            return jsonify({"status":"interval_updated", "interval": int(interval)}), 200
+        interval = int(interval)
+        if unit == "minutes":
+            seconds = int(interval) * 60
         else:
-            return jsonify({"error":"failed to set interval"}), 500
+            seconds = int(interval)
+        # ensure settings table exists and upsert
+        conn, cur = get_db()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                name TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        cur.execute("INSERT INTO settings (name,value) VALUES (%s,%s) ON CONFLICT (name) DO UPDATE SET value=EXCLUDED.value",
+                    ("post_interval_seconds", str(seconds)))
+        conn.commit(); conn.close()
+        return jsonify({"status":"interval_updated", "seconds": seconds}), 200
     except Exception as e:
-        logger.exception("api_interval failed: %s", e)
+        logger.exception("interval update failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route("/health")
