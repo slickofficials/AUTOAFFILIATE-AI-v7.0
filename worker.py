@@ -1,229 +1,619 @@
-# worker.py - v23.0 $10M EMPIRE BOT | FULL DEEPLINKS + ALL SOCIAL + STOP/START
+# worker.py — AutoAffiliate worker (hourly posts, deep link pulls, OpenAI captions, HeyGen avatar)
 import os
 import time
+import logging
 import requests
 import psycopg
 from psycopg.rows import dict_row
-from datetime import datetime, timezone
-import tweepy
-from twilio.rest import Client
-import logging
-from logging.handlers import RotatingFileHandler
-import threading
-import signal
-import sys
+from datetime import datetime, timezone, timedelta
 
-# === LOGGING ===
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-handler = RotatingFileHandler('worker.log', maxBytes=10**6, backupCount=5)
-handler.setFormatter(logging.Formatter('{"time": "%(asctime)s", "level": "%(levelname)s", "msg": "%(message)s"}'))
-logger.addHandler(handler)
+# modern OpenAI client (safe import if present)
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
-# === ENV ===
-DB_URL = os.getenv('DATABASE_URL')
-AWIN_ID = os.getenv('AWIN_ID')
-RAKUTEN_ID = os.getenv('RAKUTEN_ID')
-FB_PAGE_ID = os.getenv('FB_PAGE_ID')
-FB_TOKEN = os.getenv('FB_TOKEN')
-IG_USER_ID = os.getenv('IG_USER_ID')
-IG_TOKEN = os.getenv('IG_TOKEN')
-TWITTER_API_KEY = os.getenv('TWITTER_API_KEY')
-TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET')
-TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN')
-TWITTER_ACCESS_SECRET = os.getenv('TWITTER_ACCESS_SECRET')
-IFTTT_KEY = os.getenv('IFTTT_KEY')
-YT_REFRESH_TOKEN = os.getenv('YT_REFRESH_TOKEN')
-YT_CLIENT_ID = os.getenv('YT_CLIENT_ID')
-YT_CLIENT_SECRET = os.getenv('YT_CLIENT_SECRET')
-TWILIO_SID = os.getenv('TWILIO_SID')
-TWILIO_TOKEN = os.getenv('TWILIO_TOKEN')
-YOUR_WHATSAPP = os.getenv('YOUR_WHATSAPP')
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
+logger = logging.getLogger("worker")
 
-# === GLOBALS ===
-worker_thread = None
-stop_event = threading.Event()
+DB_URL = os.getenv("DATABASE_URL")
+if not DB_URL:
+    logger.error("DATABASE_URL not set — worker will not start (set in env)")
 
-# === TWILIO ===
-client = Client(TWILIO_SID, TWILIO_TOKEN) if TWILIO_SID else None
-def send_alert(title, body):
-    if client and YOUR_WHATSAPP:
-        try:
-            client.messages.create(
-                from_='whatsapp:+14155238886',
-                body=f"*{title}*\n{body}",
-                to=YOUR_WHATSAPP
-            )
-        except: pass
+# Affiliate IDs
+AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID")
+AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN")
+RAKUTEN_CLIENT_ID = os.getenv("RAKUTEN_CLIENT_ID")
+RAKUTEN_SECURITY_TOKEN = os.getenv("RAKUTEN_SECURITY_TOKEN")
 
-# === DB ===
-def get_db():
-    conn = psycopg.connect(DB_URL, row_factory=dict_row, timeout=10)
+# API keys & tokens
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+HEYGEN_KEY = os.getenv("HEYGEN_API_KEY")
+FB_PAGE_ID = os.getenv("FB_PAGE_ID")
+FB_TOKEN = os.getenv("FB_ACCESS_TOKEN")
+IG_USER_ID = os.getenv("IG_USER_ID")
+IG_TOKEN = os.getenv("IG_TOKEN")
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
+TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
+TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
+YOUTUBE_TOKEN_JSON = os.getenv("YOUTUBE_TOKEN_JSON")
+IFTTT_KEY = os.getenv("IFTTT_KEY")  # for TikTok webhook
+
+TWILIO_SID = os.getenv("TWILIO_SID")
+TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
+YOUR_WHATSAPP = os.getenv("YOUR_WHATSAPP")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+POST_INTERVAL_SECONDS = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
+PULL_INTERVAL_MINUTES = int(os.getenv("PULL_INTERVAL_MINUTES", "60"))
+SLEEP_ON_EMPTY = int(os.getenv("SLEEP_ON_EMPTY", "300"))
+
+DEBUG_REDIRECTS = os.getenv("DEBUG_REDIRECTS", "false").lower() in ("1","true","yes")
+
+# OpenAI client (modern)
+openai_client = None
+if OPENAI and OPENAI_KEY:
+    try:
+        openai_client = OpenAI(api_key=OPENAI_KEY)
+    except Exception:
+        logger.exception("OpenAI client init failed")
+
+# Worker control flags
+_worker_running = False
+_stop_requested = False
+_alternate_next = os.getenv("ALTERNATE_AFFILIATE", "true").lower() in ("1","true","yes")
+# Use internal toggle so we alternate (Awin <-> Rakuten)
+_toggle = 0
+
+def get_db_conn():
+    if not DB_URL:
+        raise RuntimeError("DATABASE_URL not set")
+    conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-def init_db():
-    conn, cur = get_db()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id SERIAL PRIMARY KEY,
-            url TEXT UNIQUE NOT NULL,
-            source TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMPTZ DEFAULT NOW(),
-            posted_at TIMESTAMPTZ
-        );
-        CREATE TABLE IF NOT EXISTS clicks (id SERIAL, post_id INT, ip TEXT, user_agent TEXT, created_at TIMESTAMPTZ);
-        CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT);
-    """)
-    conn.commit()
-    conn.close()
+def send_alert(title, body):
+    logger.info("ALERT: %s — %s", title, body)
+    # Twilio WhatsApp
+    if TWILIO_SID and TWILIO_TOKEN and YOUR_WHATSAPP:
+        try:
+            from twilio.rest import Client
+            client = Client(TWILIO_SID, TWILIO_TOKEN)
+            client.messages.create(from_='whatsapp:+14155238886', body=f"*{title}*\n{body}", to=YOUR_WHATSAPP)
+        except Exception:
+            logger.exception("Twilio alert failed")
+    # Telegram
+    if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
+        try:
+            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                          json={"chat_id": TELEGRAM_CHAT_ID, "text": f"{title}\n{body}"}, timeout=8)
+        except Exception:
+            logger.exception("Telegram alert failed")
 
-# === PULL LINKS ===
-def pull_awin():
-    if not AWIN_ID: return []
+# DB table creation helper (safe idempotent)
+def ensure_tables():
     try:
-        r = requests.get(f"https://www.awin1.com/cread.php?awinmid={AWIN_ID}&awinaffid=123456&clickref=bot", timeout=15)
-        return [r.url] if "tidd.ly" in r.url else []
-    except: return []
+        conn, cur = get_db_conn()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id SERIAL PRIMARY KEY,
+                url TEXT UNIQUE NOT NULL,
+                source TEXT,
+                status TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+                posted_at TIMESTAMP WITH TIME ZONE
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS clicks (
+                id SERIAL PRIMARY KEY,
+                post_id INTEGER REFERENCES posts(id),
+                ip TEXT,
+                user_agent TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            );
+        """)
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS earnings (
+                id SERIAL PRIMARY KEY,
+                amount NUMERIC,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+            );
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        logger.exception("ensure_tables failed (continuing)")
 
-def pull_rakuten():
-    if not RAKUTEN_ID: return []
-    try:
-        r = requests.get(f"https://click.linksynergy.com/deeplink?id={RAKUTEN_ID}&mid=12345&murl=https://example.com", timeout=15)
-        return [r.url] if "tidd.ly" in r.url else []
-    except: return []
+# URL validation + affiliate check
+def is_valid_https_url(url):
+    return bool(url and isinstance(url, str) and url.startswith("https://") and len(url) < 3000)
 
-# === SAVE LINKS ===
-def save_links(links, source):
-    if not links: return 0
-    conn, cur = get_db()
-    saved = 0
+def contains_affiliate_id(url):
+    if not url: return False
+    u = url.lower()
+    if AWIN_PUBLISHER_ID and str(AWIN_PUBLISHER_ID) in u: return True
+    if RAKUTEN_CLIENT_ID and str(RAKUTEN_CLIENT_ID) in u: return True
+    # common redirect hostnames (allow)
+    for host in ("tidd.ly","linksynergy","awin.com","awin1.com","click.linksynergy.com","rakuten"):
+        if host in u:
+            return True
+    return False
+
+def save_links_to_db(links, source="affiliate"):
+    if not links:
+        return 0
+    ensure_tables()
+    added = 0
+    attempted = len(links)
     for link in links:
         try:
-            cur.execute("INSERT INTO posts (url, source) VALUES (%s, %s) ON CONFLICT (url) DO NOTHING", (link, source))
-            if cur.rowcount: saved += 1
-        except: conn.rollback()
-    conn.commit()
+            if not is_valid_https_url(link):
+                logger.debug("Reject invalid: %s", link)
+                continue
+            allow = contains_affiliate_id(link)
+            if not allow:
+                logger.debug("Reject non-affiliate (no id/known host): %s", link)
+                continue
+            # Put each insert in its own transaction so one bad row doesn't abort the whole batch
+            try:
+                conn, cur = get_db_conn()
+                cur.execute("INSERT INTO posts (url, source, status, created_at) VALUES (%s,%s,'pending',%s) ON CONFLICT (url) DO NOTHING",
+                            (link, source, datetime.now(timezone.utc)))
+                conn.commit()
+                # check if actually added
+                cur.execute("SELECT 1 FROM posts WHERE url=%s", (link,))
+                if cur.fetchone():
+                    added += 1
+            except Exception:
+                logger.exception("Insert failed for %s", link)
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        except Exception:
+            logger.exception("save_links loop error")
+    logger.info("Saved %s validated links from %s (attempted %s)", added, source, attempted)
+    return added
+
+# AWIN: try API if token present, otherwise fallback to redirect scraping
+def awin_api_offers(limit=5):
+    offers = []
+    if not AWIN_API_TOKEN:
+        logger.debug("AWIN_API_TOKEN missing — skipping AWIN API offers")
+        return offers
+    # Best-effort: Many AWIN installations expose REST endpoints; we attempt a generic call but gracefully fallback.
+    try:
+        headers = {"Authorization": f"Bearer {AWIN_API_TOKEN}"}
+        # Common AWIN path for publisher offers (best-effort). If it fails, fallback to redirect
+        endpoint = os.getenv("AWIN_API_ENDPOINT") or "https://api.awin.com/publishers/offers"
+        r = requests.get(endpoint, headers=headers, params={"limit": limit}, timeout=10)
+        if r.status_code == 200:
+            j = r.json()
+            # try to extract urls from typical shapes
+            items = j.get("offers") or j.get("data") or j.get("items") or j
+            for it in (items if isinstance(items, list) else []):
+                url = it.get("deeplink") or it.get("tracking_url") or it.get("url") or it.get("lead_url")
+                if url and is_valid_https_url(url):
+                    offers.append(url)
+            if offers:
+                logger.info("AWIN API returned %d offers", len(offers))
+                return offers
+        else:
+            logger.warning("AWIN API returned status %s", r.status_code)
+    except Exception:
+        logger.exception("AWIN API call failed — falling back to redirect method")
+    # redirect fallback
+    return pull_awin_deeplinks(limit=limit)
+
+def pull_awin_deeplinks(limit=4):
+    out = []
+    if not AWIN_PUBLISHER_ID:
+        logger.debug("No AWIN_PUBLISHER_ID")
+        return out
+    for _ in range(limit):
+        try:
+            url = f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid=0&clickref=bot"
+            r = requests.get(url, allow_redirects=True, timeout=12)
+            final = r.url
+            if DEBUG_REDIRECTS:
+                chain = [resp.url for resp in r.history] + [r.url]
+                logger.info("AWIN redirect chain: %s", " -> ".join(chain))
+            logger.debug("AWIN final: %s", final)
+            if final and is_valid_https_url(final):
+                out.append(final)
+        except Exception:
+            logger.exception("AWIN pull error")
+    return out
+
+# Rakuten: try API if token present, otherwise fallback to redirect scraping
+def rakuten_api_offers(limit=5):
+    offers = []
+    # Rakuten Advertising API often needs an Authorization header/token; attempt best-effort
+    if not RAKUTEN_SECURITY_TOKEN:
+        logger.debug("RAKUTEN_SECURITY_TOKEN missing — skipping Rakuten API offers")
+        return offers
+    try:
+        headers = {"Authorization": f"Bearer {RAKUTEN_SECURITY_TOKEN}"}
+        endpoint = os.getenv("RAKUTEN_API_ENDPOINT") or "https://api.rakutenadvertising.com/linklocator/1.0/getMerchByCountry"
+        r = requests.get(endpoint, headers=headers, params={"limit": limit}, timeout=10)
+        if r.status_code == 200:
+            j = r.json()
+            items = j.get("merchandisingItems") or j.get("data") or j
+            for it in (items if isinstance(items, list) else []):
+                url = it.get("deeplinkUrl") or it.get("clickUrl") or it.get("trackingUrl")
+                if url and is_valid_https_url(url):
+                    offers.append(url)
+            if offers:
+                logger.info("Rakuten API returned %d offers", len(offers))
+                return offers
+        else:
+            logger.warning("Rakuten API returned status %s", r.status_code)
+    except Exception:
+        logger.exception("Rakuten API call failed — falling back to redirect method")
+    # redirect fallback
+    return pull_rakuten_deeplinks(limit=limit)
+
+def pull_rakuten_deeplinks(limit=4):
+    out = []
+    if not RAKUTEN_CLIENT_ID:
+        logger.debug("No RAKUTEN_CLIENT_ID")
+        return out
+    for _ in range(limit):
+        try:
+            url = f"https://click.linksynergy.com/deeplink?id={RAKUTEN_CLIENT_ID}&mid=0&murl=https://example.com"
+            r = requests.get(url, allow_redirects=True, timeout=12)
+            final = r.url
+            if DEBUG_REDIRECTS:
+                chain = [resp.url for resp in r.history] + [r.url]
+                logger.info("Rakuten redirect chain: %s", " -> ".join(chain))
+            logger.debug("Rakuten final: %s", final)
+            if final and is_valid_https_url(final):
+                out.append(final)
+        except Exception:
+            logger.exception("Rakuten pull error")
+    return out
+
+# OpenAI caption generator (modern client if available)
+def generate_caption(link):
+    if not openai_client:
+        return f"Hot deal — check this out: {link}"
+    try:
+        prompt = f"Create a short energetic social caption (one sentence, includes 1 emoji, 1 CTA) for this affiliate link:\n\n{link}"
+        # Use best-effort modern client interface
+        try:
+            resp = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role":"user","content": prompt}],
+                max_tokens=60
+            )
+            text = ""
+            if resp and getattr(resp, "choices", None):
+                choice = resp.choices[0]
+                msg = getattr(choice, "message", None)
+                if msg and getattr(msg, "content", None):
+                    text = msg.content.strip()
+            if not text:
+                text = getattr(resp, "text", None) or ""
+        except Exception:
+            # fallback older style
+            r = openai_client.responses.create(model="gpt-4o-mini", input=prompt, max_tokens=60)
+            text = (r.output_text if hasattr(r, "output_text") else "") or ""
+        text = (text or "").strip()
+        if not text:
+            return f"Hot deal — check this out: {link}"
+        if link not in text:
+            text = f"{text} {link}"
+        return text
+    except Exception:
+        logger.exception("OpenAI caption failed")
+        return f"Hot deal — check this out: {link}"
+
+# HeyGen talking avatar (create job; may return url or job id)
+def generate_heygen_avatar_video(text):
+    if not HEYGEN_KEY:
+        return None
+    try:
+        url = "https://api.heygen.com/v1/video/generate"
+        headers = {"x-api-key": HEYGEN_KEY, "Content-Type": "application/json"}
+        payload = {
+            "type": "avatar",
+            "script": {"type":"text","input": text},
+            "avatar": "default",
+            "voice": {"language":"en-US", "style":"energetic"},
+            "output_format": "mp4"
+        }
+        r = requests.post(url, json=payload, headers=headers, timeout=60)
+        if r.status_code in (200,201):
+            data = r.json()
+            return data.get("video_url") or data.get("result_url") or data.get("url") or data.get("job_id")
+        logger.warning("HeyGen failed %s %s", r.status_code, r.text[:300])
+    except Exception:
+        logger.exception("HeyGen error")
+    return None
+
+# Social posting helpers (FB/IG/Twitter/Telegram/YouTube/IFTTT)
+def post_facebook(message):
+    if not FB_PAGE_ID or not FB_TOKEN:
+        logger.debug("FB not configured")
+        return False
+    try:
+        endpoint = f"https://graph.facebook.com/v17.0/{FB_PAGE_ID}/feed"
+        params = {"access_token": FB_TOKEN, "message": message}
+        r = requests.post(endpoint, params=params, timeout=15)
+        logger.info("FB post status=%s", r.status_code)
+        if r.status_code in (200,201):
+            return True
+        logger.warning("FB response: %s", r.text[:400])
+    except Exception:
+        logger.exception("FB post failed")
+    return False
+
+def post_instagram(caption):
+    if not IG_USER_ID or not IG_TOKEN:
+        logger.debug("IG not configured")
+        return False
+    try:
+        image_url = "https://i.imgur.com/airmax270.jpg"
+        create = requests.post(f"https://graph.facebook.com/v17.0/{IG_USER_ID}/media",
+                               params={"image_url": image_url, "caption": caption, "access_token": IG_TOKEN}, timeout=15)
+        if create.status_code not in (200,201):
+            logger.warning("IG create failed: %s", create.text[:300]); return False
+        creation_id = create.json().get("id")
+        publish = requests.post(f"https://graph.facebook.com/v17.0/{IG_USER_ID}/media_publish",
+                                params={"creation_id": creation_id, "access_token": IG_TOKEN}, timeout=15)
+        logger.info("IG publish status=%s", publish.status_code)
+        return publish.status_code in (200,201)
+    except Exception:
+        logger.exception("IG post failed")
+    return False
+
+def post_twitter(text):
+    try:
+        import tweepy
+        if TWITTER_BEARER_TOKEN:
+            client = tweepy.Client(bearer_token=TWITTER_BEARER_TOKEN,
+                                   consumer_key=TWITTER_API_KEY,
+                                   consumer_secret=TWITTER_API_SECRET,
+                                   access_token=TWITTER_ACCESS_TOKEN,
+                                   access_token_secret=TWITTER_ACCESS_SECRET)
+            client.create_tweet(text=text)
+            logger.info("Tweet posted via v2")
+            return True
+        else:
+            if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
+                logger.debug("Twitter creds missing"); return False
+            auth = tweepy.OAuth1UserHandler(TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET)
+            api = tweepy.API(auth)
+            api.update_status(status=text)
+            logger.info("Tweet posted via OAuth1")
+            return True
+    except Exception:
+        logger.exception("Twitter error")
+    return False
+
+def post_telegram(text):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logger.debug("Telegram not configured")
+        return False
+    try:
+        resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                             json={"chat_id": TELEGRAM_CHAT_ID, "text": text}, timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        logger.exception("Telegram post failed")
+    return False
+
+def trigger_ifttt(event, value1=None, value2=None, value3=None):
+    if not IFTTT_KEY:
+        logger.debug("IFTTT not configured")
+        return False
+    # IFTTT_KEY expected to be the key only (not full url)
+    if IFTTT_KEY.startswith("http"):
+        base = IFTTT_KEY.rstrip("/")
+    else:
+        base = "https://maker.ifttt.com"
+    url = f"{base}/trigger/{event}/with/key/{IFTTT_KEY}" if not IFTTT_KEY.startswith("http") else f"{IFTTT_KEY}/trigger/{event}/with/key/{os.getenv('IFTTT_KEY')}"
+    payload = {}
+    if value1: payload["value1"] = value1
+    if value2: payload["value2"] = value2
+    if value3: payload["value3"] = value3
+    try:
+        r = requests.post(url, json=payload, timeout=8)
+        logger.info("IFTTT status=%s", r.status_code)
+        return r.status_code in (200,202)
+    except Exception:
+        logger.exception("IFTTT failed")
+    return False
+
+# YouTube: placeholder upload flow (requires proper google oauth client + token file)
+def post_youtube_short(title, video_url):
+    if not YOUTUBE_TOKEN_JSON:
+        logger.debug("YouTube not configured")
+        return False
+    try:
+        post_telegram(f"YouTube (manual): {title}\n{video_url}")
+        return True
+    except Exception:
+        logger.exception("YouTube fallback failed")
+    return False
+
+# Enqueue manual link (API helper)
+def enqueue_manual_link(url):
+    if not is_valid_https_url(url):
+        raise ValueError("URL must be HTTPS")
+    inserted = save_links_to_db([url], source="manual")
+    return {"inserted": inserted, "url": url}
+
+# Posting pipeline — logs redirect chain when DEBUG_REDIRECTS True
+def post_next_pending():
+    conn, cur = get_db_conn()
+    cur.execute("SELECT id, url FROM posts WHERE status='pending' ORDER BY created_at ASC LIMIT 1")
+    row = cur.fetchone()
     conn.close()
+    if not row:
+        logger.debug("No pending posts")
+        return False
+    post_id = row["id"]; url = row["url"]
+    # quick validation — ensure https
+    if not is_valid_https_url(url):
+        logger.warning("Invalid pending; marking failed: %s", url)
+        conn, cur = get_db_conn()
+        cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE id=%s", ("failed", datetime.now(timezone.utc), post_id))
+        conn.commit(); conn.close()
+        return False
+
+    # If debug flag set, request URL once (no side-effects) and log redirect chain
+    try:
+        r = requests.get(url, allow_redirects=True, timeout=12)
+        if DEBUG_REDIRECTS:
+            chain = [resp.url for resp in r.history] + [r.url]
+            logger.info("Pending post %s redirect chain: %s", post_id, " -> ".join(chain))
+    except Exception:
+        logger.exception("Redirect audit request failed for %s", url)
+
+    caption = generate_caption(url)
+    public = os.getenv("APP_PUBLIC_URL") or os.getenv("PUBLIC_URL") or ""
+    redirect_link = f"{public.rstrip('/')}/r/{post_id}" if public else url
+    caption_with_link = f"{caption}\n{redirect_link}"
+    video_ref = generate_heygen_avatar_video(caption) if HEYGEN_KEY else None
+    video_host_url = video_ref if (video_ref and isinstance(video_ref, str) and video_ref.startswith("http")) else None
+    success = False
+    try:
+        if post_facebook(caption_with_link): success = True
+    except Exception:
+        logger.exception("FB error")
+    try:
+        if post_instagram(caption_with_link): success = True
+    except Exception:
+        logger.exception("IG error")
+    try:
+        if post_twitter(caption + " " + redirect_link): success = True
+    except Exception:
+        logger.exception("Twitter error")
+    try:
+        if post_telegram(caption_with_link): success = True
+    except Exception:
+        logger.exception("Telegram error")
+    # TikTok via IFTTT (fire-and-forget) — keep IFTTT for TikTok only
+    try:
+        trigger_ifttt("Post_TikTok", value1=caption, value2=redirect_link)
+    except Exception:
+        logger.exception("IFTTT error")
+    # YouTube shorts fallback (attempt)
+    if video_host_url:
+        try:
+            post_youtube_short(caption, video_host_url)
+        except Exception:
+            logger.exception("YouTube post failed")
+    # Update DB status
+    conn, cur = get_db_conn()
+    cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE id=%s", ("sent" if success else "failed", datetime.now(timezone.utc), post_id))
+    conn.commit(); conn.close()
+    send_alert("POSTED" if success else "POST FAILED", f"{redirect_link} | vid:{bool(video_host_url)}")
+    return success
+
+# refresh all sources and save — alternates AWIN/Rakuten when configured
+def refresh_all_sources():
+    global _toggle
+    logger.info("Refreshing affiliate sources")
+    links = []
+    try:
+        # If ALTERNATE_AFFILIATE true, alternate the order
+        if _alternate_next:
+            if _toggle % 2 == 0:
+                links += awin_api_offers(limit=4)
+                links += rakuten_api_offers(limit=4)
+            else:
+                links += rakuten_api_offers(limit=4)
+                links += awin_api_offers(limit=4)
+            _toggle += 1
+        else:
+            links += awin_api_offers(limit=4)
+            links += rakuten_api_offers(limit=4)
+    except Exception:
+        logger.exception("Affiliate refresh error")
+    saved = save_links_to_db(links, source="affiliate") if links else 0
+    send_alert("REFRESH", f"Pulled {len(links)} links, saved {saved}")
     return saved
 
-# === POST FUNCTIONS ===
-def post_fb(link): 
-    if not FB_PAGE_ID or not FB_TOKEN: return False
+# Stats (for app)
+def get_stats():
+    s = {"total":0,"pending":0,"sent":0,"failed":0,"last_posted_at":None,"clicks_total":0}
     try:
-        r = requests.post(f"https://graph.facebook.com/v20.0/{FB_PAGE_ID}/feed",
-                         params={'access_token': FB_TOKEN, 'message': f"Deal! {link}"}, timeout=15)
-        return r.status_code == 200
-    except: return False
+        conn, cur = get_db_conn()
+        cur.execute("SELECT COUNT(*) as c FROM posts")
+        s["total"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='pending'")
+        s["pending"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='sent'")
+        s["sent"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT COUNT(*) as c FROM posts WHERE status='failed'")
+        s["failed"] = cur.fetchone()["c"] or 0
+        cur.execute("SELECT posted_at FROM posts WHERE status='sent' ORDER BY posted_at DESC LIMIT 1")
+        row = cur.fetchone()
+        if row and row["posted_at"]:
+            s["last_posted_at"] = row["posted_at"].astimezone(timezone.utc).isoformat()
+        cur.execute("SELECT COUNT(*) as c FROM clicks")
+        s["clicks_total"] = cur.fetchone()["c"] or 0
+        conn.close()
+    except Exception:
+        logger.exception("get_stats failed")
+    return s
 
-def post_ig(link):
-    if not IG_USER_ID or not IG_TOKEN: return False
-    try:
-        r = requests.post(f"https://graph.facebook.com/v20.0/{IG_USER_ID}/media",
-                         params={'image_url': 'https://i.imgur.com/airmax270.jpg', 'caption': f"Deal! {link}", 'access_token': IG_TOKEN}, timeout=15)
-        if r.status_code != 200: return False
-        cid = r.json()['id']
-        requests.post(f"https://graph.facebook.com/v20.0/{IG_USER_ID}/media_publish",
-                     params={'creation_id': cid, 'access_token': IG_TOKEN}, timeout=15)
-        return True
-    except: return False
-
-def post_twitter(link):
-    if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]): return False
-    try:
-        client = tweepy.Client(consumer_key=TWITTER_API_KEY, consumer_secret=TWITTER_API_SECRET,
-                              access_token=TWITTER_ACCESS_TOKEN, access_token_secret=TWITTER_ACCESS_SECRET)
-        client.create_tweet(text=f"Deal! {link}")
-        return True
-    except: return False
-
-def post_tiktok(link):
-    if not IFTTT_KEY: return False
-    try:
-        requests.post(f"https://maker.ifttt.com/trigger/tiktok_post/with/key/{IFTTT_KEY}",
-                     json={"value1": f"Deal! {link}"}, timeout=15)
-        return True
-    except: return False
-
-def post_youtube(link):
-    if not all([YT_REFRESH_TOKEN, YT_CLIENT_ID, YT_CLIENT_SECRET]): return False
-    try:
-        token = requests.post("https://oauth2.googleapis.com/token", data={
-            'client_id': YT_CLIENT_ID, 'client_secret': YT_CLIENT_SECRET,
-            'refresh_token': YT_REFRESH_TOKEN, 'grant_type': 'refresh_token'
-        }, timeout=15).json()
-        return bool(token.get('access_token'))
-    except: return False
-
-# === BOT LOOP ===
-def bot_loop():
-    init_db()
-    send_alert("BOT LIVE", "v23.0 Running")
-    your_links = [l.strip() for l in os.getenv('YOUR_LINKS', '').split(',') if l.strip()]
-    if your_links: save_links(your_links, "manual")
-
-    while not stop_event.is_set():
-        try:
-            awin = pull_awin()
-            rakuten = pull_rakuten()
-            saved = save_links(awin, "awin") + save_links(rakuten, "rakuten")
-            if saved: send_alert("PULLED", f"{saved} new links")
-
-            conn, cur = get_db()
-            cur.execute("SELECT url FROM posts WHERE status='pending' ORDER BY RANDOM() LIMIT 1")
-            row = cur.fetchone()
-            conn.close()
-
-            if row:
-                link = row['url']
-                platforms = []
-                if post_fb(link): platforms.append("FB")
-                if post_ig(link): platforms.append("IG")
-                if post_twitter(link): platforms.append("X")
-                if post_tiktok(link): platforms.append("TikTok")
-                if post_youtube(link): platforms.append("YT")
-
-                status = 'sent' if platforms else 'failed'
-                conn, cur = get_db()
-                cur.execute("UPDATE posts SET status=%s, posted_at=%s WHERE url=%s",
-                           (status, datetime.now(timezone.utc), link))
-                conn.commit()
-                conn.close()
-
-                if platforms: send_alert("POSTED", f"{link[:50]}... on {', '.join(platforms)}")
-
-            interval = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
-            stop_event.wait(interval)
-        except Exception as e:
-            logger.error(f"Bot error: {e}")
-            stop_event.wait(60)
-
-# === CONTROL FUNCTIONS ===
+# Start / stop
 def start_worker_background():
-    global worker_thread
-    if worker_thread and worker_thread.is_alive(): return
-    stop_event.clear()
-    worker_thread = threading.Thread(target=bot_loop, daemon=True)
-    worker_thread.start()
+    global _worker_running, _stop_requested
+    if _worker_running:
+        logger.info("Worker already running")
+        return
+    if not DB_URL:
+        logger.error("DATABASE_URL missing; not starting worker")
+        return
+    _worker_running = True
+    _stop_requested = False
+    logger.info("Worker starting — cadence: %s seconds", POST_INTERVAL_SECONDS)
+    send_alert("WORKER START", "AutoAffiliate worker started")
+    # ensure tables
+    ensure_tables()
+    next_pull = datetime.now(timezone.utc) - timedelta(seconds=5)
+    try:
+        while not _stop_requested:
+            try:
+                now = datetime.now(timezone.utc)
+                if now >= next_pull:
+                    try:
+                        refresh_all_sources()
+                    except Exception:
+                        logger.exception("refresh_all_sources failed")
+                    next_pull = now + timedelta(minutes=PULL_INTERVAL_MINUTES)
+                posted = post_next_pending()
+                if posted:
+                    time.sleep(POST_INTERVAL_SECONDS)
+                else:
+                    time.sleep(SLEEP_ON_EMPTY)
+            except Exception:
+                logger.exception("Worker top-level error, sleeping 60s")
+                time.sleep(60)
+    finally:
+        _worker_running = False
+        _stop_requested = False
+        logger.info("Worker stopped")
+        send_alert("WORKER STOPPED", "AutoAffiliate worker stopped")
 
 def stop_worker():
-    stop_event.set()
-    send_alert("BOT STOPPED", "Worker halted")
+    global _stop_requested
+    logger.info("Stop requested")
+    _stop_requested = True
 
-def refresh_all_sources():
-    return save_links(pull_awin(), "awin") + save_links(pull_rakuten(), "rakuten")
-
-def enqueue_manual_link(url):
-    return save_links([url], "manual")
-
-# === GRACEFUL SHUTDOWN ===
-def signal_handler(sig, frame):
-    stop_worker()
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
-signal.signal(signal.SIGTERM, signal_handler)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
+    # if run directly — start worker loop
     start_worker_background()
-    while True: time.sleep(3600)
