@@ -261,9 +261,9 @@ def rakuten_api_offers(limit=4):
     if not RAKUTEN_SECURITY_TOKEN:
         return out
     try:
-        # Placeholder: Rakuten Advertising API pattern (requires token/auth)
+        # Placeholder: Rakuten Marketing API pattern (requires token/auth)
         headers = {"Authorization": f"Bearer {RAKUTEN_SECURITY_TOKEN}", "Accept":"application/json"}
-        endpoint = "https://api.rakutenadvertising.com/linking/v1/offer"  # example (adjust to real doc)
+        endpoint = "https://api.rakutenmarketing.com/linking/v1/offer"  # example (adjust to real doc)
         r = requests.get(endpoint, headers=headers, timeout=12)
         if r.status_code == 200:
             data = r.json()
