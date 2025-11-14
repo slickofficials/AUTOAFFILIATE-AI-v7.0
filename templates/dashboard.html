@@ -1,65 +1,445 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BEAST v21.0</title>
-  <link href="https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@400;600;900&display=swap" rel="stylesheet">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>{{ title or "HQ Dashboard" }}</title>
+
+  <!-- Bootstrap CDN (no npm) -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- Axios + Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
   <style>
-    :root{--blue:#007AFF;--red:#FF2D55;--bg:#F2F2F7;--card:#FFF;--shadow:0 8px 30px rgba(0,0,0,0.15);}
-    *{margin:0;padding:0;box-sizing:border-box;font-family:'SF Pro Display',sans-serif;}
-    body{background:var(--bg);padding:20px;}
-    .container{max-width:420px;margin:auto;background:var(--card);border-radius:32px;overflow:hidden;box-shadow:var(--shadow);}
-    .header{background:linear-gradient(135deg,#007AFF,#00C2FF);padding:50px 20px;text-align:center;color:white;}
-    .header h1{font-size:2.5rem;font-weight:900;}
-    .time{font-size:1.1rem;opacity:0.9;margin-top:10px;}
-    .stats{padding:25px;}
-    .stat-card{background:var(--card);border-radius:22px;padding:18px;margin-bottom:15px;text-align:center;box-shadow:0 4px 15px rgba(0,0,0,0.1);}
-    .stat-card h3{font-size:0.95rem;color:#8E8E93;text-transform:uppercase;letter-spacing:1.2px;}
-    .stat-card p{font-size:2.2rem;font-weight:800;color:#1C1C1E;}
-    .beast-btn{padding:25px;text-align:center;}
-    .beast-btn button{background:linear-gradient(135deg,var(--red),#FF5E3A);color:white;border:none;border-radius:50px;padding:20px 50px;font-size:1.5rem;font-weight:800;width:85%;box-shadow:0 10px 25px rgba(255,45,85,0.5);}
-    .swipe-hint{text-align:center;color:#8E8E93;font-size:0.9rem;margin-top:20px;}
-    .swipe-hint span{color:var(--blue);font-weight:600;}
+    /* iOS metallic / light theme */
+    :root{
+      --bg:#f5f7fa;
+      --card:#ffffff;
+      --muted:#6b7280;
+      --accent:#3b82f6; /* blue accent */
+      --accent-2:#34d399; /* green */
+      --glass: rgba(255,255,255,0.65);
+      --glass-2: rgba(255,255,255,0.85);
+      --shadow: 0 6px 18px rgba(20,20,40,0.08);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+    html,body { background: linear-gradient(180deg,#eef6ff 0%, #f7fbff 100%); color:#0f172a; height:100%; }
+    .navbar { background: linear-gradient(90deg, rgba(255,255,255,0.8), rgba(250,250,250,0.9)); backdrop-filter: blur(6px); box-shadow: var(--shadow); border-bottom: 1px solid rgba(15,23,42,0.03); }
+    .brand { font-weight:700; letter-spacing:0.2px; color:var(--accent); font-size:1.05rem; }
+    .card { background: linear-gradient(180deg,var(--card), #fcfeff); border-radius:16px; box-shadow: var(--shadow); border:1px solid rgba(15,23,42,0.04); }
+    .stat-title { color:var(--muted); font-size:0.85rem; margin-bottom:6px; }
+    .stat-value { font-weight:700; font-size:1.6rem; color:#081129; }
+    .btn-accent { background: linear-gradient(90deg,var(--accent), #2563eb); border: none; color:white; border-radius:10px; padding:8px 14px; }
+    .btn-accent:hover { opacity:0.95; transform:translateY(-1px); }
+    .small-muted { color:var(--muted); font-size:0.85rem; }
+
+    /* Controls */
+    .control-block { display:flex; gap:8px; align-items:center; justify-content:center; flex-wrap:wrap; }
+
+    /* Chart container */
+    .chart-card { padding:18px; border-radius:14px; }
+
+    /* Logs panel */
+    #logs { height:200px; overflow:auto; background:linear-gradient(180deg,#fbfdff,#ffffff); border-radius:10px; padding:12px; font-family: monospace; font-size:0.85rem; color:#0b1220; border:1px solid rgba(6,12,34,0.03); }
+
+    /* Mobile tweaks */
+    @media (max-width:576px){
+      .stat-value { font-size:1.3rem; }
+      .brand { font-size:0.95rem; }
+    }
+
+    .tag { display:inline-block; padding:6px 10px; border-radius:999px; font-size:0.8rem; background:rgba(15,23,42,0.04); color:#07112a; margin-right:6px; }
+    .muted-note { color:var(--muted); font-size:0.85rem; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>BEAST v21.0</h1>
-      <div class="time" id="time"></div>
+  <nav class="navbar py-3">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-3">
+        <div class="brand">⚡ {{ company or "SlickOfficials HQ" }}</div>
+        <div class="small-muted">AutoAffiliate • AWIN/Rakuten • OpenAI • HeyGen</div>
+      </div>
+      <div class="d-flex gap-2 align-items-center">
+        <button id="refreshBtn" class="btn btn-light btn-sm">🔁 Refresh Now</button>
+        <button id="logoutBtn" class="btn btn-outline-secondary btn-sm">Logout</button>
+      </div>
     </div>
-    <div class="stats">
-      <div class="stat-card"><h3>POSTS</h3><p data-posts>0</p></div>
-      <div class="stat-card"><h3>REVENUE</h3><p data-revenue>₦0.00</p></div>
-      <div class="stat-card"><h3>REFS</h3><p data-refs>0</p></div>
-    </div>
-    <div class="beast-btn">
-      <button onclick="launch()">LAUNCH BEAST</button>
-    </div>
-    <div class="swipe-hint">
-      <span>Swipe Left</span> to Refresh • <span>Swipe Right</span> to Post
-    </div>
-  </div>
+  </nav>
 
-  <script>
-    setInterval(() => document.getElementById('time').textContent = new Date().toLocaleString('en-GB'), 1000);
-    let startX = 0;
-    document.body.addEventListener('touchstart', e => startX = e.touches[0].clientX);
-    document.body.addEventListener('touchend', e => {
-      const diff = startX - e.changedTouches[0].clientX;
-      if (Math.abs(diff) > 80) {
-        if (diff > 0) refresh(); else launch();
+  <main class="container py-4">
+    <!-- Top stats -->
+    <div class="row g-3 mb-3">
+      <div class="col-6 col-md-3">
+        <div class="card p-3">
+          <div class="stat-title">Total Links</div>
+          <div class="stat-value" id="stat_total">0</div>
+          <div class="small-muted" id="stat_sources">Sources: —</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card p-3">
+          <div class="stat-title">Pending</div>
+          <div class="stat-value" id="stat_pending">0</div>
+          <div class="small-muted">Queued posts</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card p-3">
+          <div class="stat-title">Sent</div>
+          <div class="stat-value" id="stat_sent">0</div>
+          <div class="small-muted">Successful posts</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="card p-3 text-center">
+          <div class="stat-title">Next Post In</div>
+          <div class="stat-value" id="stat_next">—</div>
+          <div class="small-muted" id="stat_last">Last: —</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chart + controls -->
+    <div class="row g-3 mb-4">
+      <div class="col-lg-8">
+        <div class="card chart-card p-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div><strong>Activity</strong><div class="small-muted">Posts / Clicks over time</div></div>
+            <div class="muted-note">Auto updates every 10s</div>
+          </div>
+          <canvas id="activityChart" style="height:280px;"></canvas>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card p-3 mb-3">
+          <h6>Bot Controls</h6>
+          <div class="control-block my-2">
+            <button id="startBtn" class="btn-accent">Start Bot</button>
+            <button id="stopBtn" class="btn btn-outline-danger">Stop Bot</button>
+          </div>
+          <div class="mt-3">
+            <label class="form-label small-muted">Posting Frequency (mins)</label>
+            <select id="intervalSelect" class="form-select mb-2">
+              <option value="5">Every 5</option>
+              <option value="15">Every 15</option>
+              <option value="30">Every 30</option>
+              <option value="60">Every 60</option>
+            </select>
+            <button id="saveInterval" class="btn btn-sm btn-light">Save Frequency</button>
+          </div>
+
+          <hr />
+
+          <h6>Rotation</h6>
+          <div class="mb-2">
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rotation" id="rot_alt" value="alternate">
+              <label class="form-check-label" for="rot_alt">Alternate AWIN ↔ RAKUTEN (recommended)</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rotation" id="rot_awin" value="awin">
+              <label class="form-check-label" for="rot_awin">AWIN only</label>
+            </div>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="rotation" id="rot_rakuten" value="rakuten">
+              <label class="form-check-label" for="rot_rakuten">Rakuten only</label>
+            </div>
+            <div class="mt-2">
+              <button id="saveRotation" class="btn btn-sm btn-light">Save Rotation</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-3">
+          <h6>Deep-link Tester (manual)</h6>
+          <div class="mb-2">
+            <input id="manualUrl" class="form-control mb-2" placeholder="https://..." />
+            <div class="d-grid gap-2">
+              <button id="enqueueBtn" class="btn btn-primary">Enqueue Link</button>
+              <button id="refreshSources" class="btn btn-outline-secondary">Refresh Sources Now</button>
+            </div>
+          </div>
+          <div class="small-muted">IFTTT used for TikTok only; other platforms via API.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top links + Recent posts + logs -->
+    <div class="row g-3">
+      <div class="col-lg-4">
+        <div class="card p-3">
+          <h6>Top Links</h6>
+          <div id="topLinks" class="mt-2"></div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card p-3">
+          <h6>Recent Posts</h6>
+          <div id="recentPosts" class="mt-2"></div>
+        </div>
+      </div>
+
+      <div class="col-lg-4">
+        <div class="card p-3">
+          <h6>Live Logs & Debug</h6>
+          <div id="logs"></div>
+          <div class="form-check form-switch mt-2">
+            <input class="form-check-input" type="checkbox" id="debugMode">
+            <label class="form-check-label" for="debugMode">Verbose debug (show redirect chains)</label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="py-3 text-center small-muted">Status: <span id="healthStatus">—</span></div>
+  </main>
+
+<script>
+  // Basic helpers and state
+  const logsEl = document.getElementById('logs');
+  function log(...args) {
+    const now = new Date().toISOString().replace('T',' ').split('.')[0];
+    const txt = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+    const line = document.createElement('div');
+    line.textContent = `[${now}] ${txt}`;
+    logsEl.prepend(line);
+    // cap logs
+    while (logsEl.children.length > 400) logsEl.removeChild(logsEl.lastChild);
+  }
+
+  // Elements
+  const refreshBtn = document.getElementById('refreshBtn');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const enqueueBtn = document.getElementById('enqueueBtn');
+  const refreshSourcesBtn = document.getElementById('refreshSources');
+  const manualUrl = document.getElementById('manualUrl');
+  const statTotal = document.getElementById('stat_total');
+  const statPending = document.getElementById('stat_pending');
+  const statSent = document.getElementById('stat_sent');
+  const statNext = document.getElementById('stat_next');
+  const statLast = document.getElementById('stat_last');
+  const topLinksEl = document.getElementById('topLinks');
+  const recentPostsEl = document.getElementById('recentPosts');
+  const healthStatus = document.getElementById('healthStatus');
+  const intervalSelect = document.getElementById('intervalSelect');
+  const saveInterval = document.getElementById('saveInterval');
+  const saveRotation = document.getElementById('saveRotation');
+
+  const debugModeEl = document.getElementById('debugMode');
+
+  // Chart
+  let chart;
+  function drawChart(labels = [], values = []) {
+    const ctx = document.getElementById('activityChart').getContext('2d');
+    if (chart) chart.destroy();
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Posts',
+          data: values,
+          tension: 0.3,
+          fill: true,
+          backgroundColor: 'rgba(59,130,246,0.12)',
+          borderColor: '#2563eb',
+          pointRadius: 3
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: { x: { grid: { display: false } } }
       }
     });
-    function launch() { fetch('/beast_campaign', {method:'POST'}); alert("BEAST LAUNCHED"); }
-    function refresh() {
-      fetch('/api/stats').then(r=>r.json()).then(d => {
-        document.querySelector('[data-posts]').textContent = d.posts_sent;
-        document.querySelector('[data-revenue]').textContent = `₦${d.revenue.toFixed(2)}`;
-        document.querySelector('[data-refs]').textContent = d.referrals;
+  }
+
+  // Save/persist controls locally (no server endpoint provided)
+  function loadLocalSettings() {
+    const savedInterval = localStorage.getItem('post_interval_mins') || '60';
+    const savedRotation = localStorage.getItem('rotation_mode') || 'alternate';
+    intervalSelect.value = savedInterval;
+    document.querySelector(`input[name="rotation"][value="${savedRotation}"]`).checked = true;
+  }
+  function saveLocalInterval() {
+    localStorage.setItem('post_interval_mins', intervalSelect.value);
+    alert('Saved posting frequency locally: ' + intervalSelect.value + ' mins');
+  }
+  function saveLocalRotation() {
+    const val = document.querySelector('input[name="rotation"]:checked').value;
+    localStorage.setItem('rotation_mode', val);
+    alert('Saved rotation: ' + val);
+  }
+
+  // API calls — match your app.py routes
+  async function fetchStats() {
+    try {
+      const res = await axios.get('/api/stats');
+      const d = res.data || {};
+      statTotal.textContent = d.total_links ?? 0;
+      statPending.textContent = d.pending ?? 0;
+      statSent.textContent = d.sent ?? 0;
+      statNext.textContent = formatSeconds(d.next_post_in_seconds ?? 0);
+      statLast.textContent = 'Last: ' + (d.last_posted_at ? new Date(d.last_posted_at).toLocaleString() : 'Never');
+      // top links
+      topLinksEl.innerHTML = '';
+      (d.top_links || []).forEach(t => {
+        const el = document.createElement('div');
+        el.className = 'mb-2';
+        el.innerHTML = `<div style="font-size:0.9rem"><a href="${t.url}" target="_blank" class="tag">#${t.id}</a> ${shorten(t.url, 56)}</div><div class="small-muted">Clicks: ${t.clicks}</div>`;
+        topLinksEl.appendChild(el);
       });
+      // recent posts
+      recentPostsEl.innerHTML = '';
+      (d.recent_posts || []).forEach(r=>{
+        const el = document.createElement('div');
+        el.className = 'mb-2';
+        el.innerHTML = `<div style="font-size:0.9rem">${shorten(r.url,56)}</div><div class="small-muted">${r.status} • ${r.posted_at ? new Date(r.posted_at).toLocaleString() : '—'}</div>`;
+        recentPostsEl.appendChild(el);
+      });
+
+      // Chart: build a quick hourly chart from last 12 recent posts by posted_at timestamps if supplied
+      const chartLabels = [];
+      const chartValues = [];
+      if (d.recent_posts && d.recent_posts.length) {
+        // aggregate posts per hour (client-side)
+        const map = {};
+        d.recent_posts.forEach(r=>{
+          const t = r.posted_at ? new Date(r.posted_at) : new Date();
+          const key = t.getHours() + ':00';
+          map[key] = (map[key]||0) + 1;
+        });
+        Object.keys(map).slice(0,12).forEach(k => { chartLabels.push(k); chartValues.push(map[k]); });
+      } else {
+        // default placeholder
+        for (let i=5;i>=0;i--){ chartLabels.push((new Date(Date.now()-i*3600e3)).getHours()+':00'); chartValues.push(0); }
+      }
+      drawChart(chartLabels, chartValues);
+
+      // statuses
+      const st = d.statuses || {};
+      const src = [];
+      if (st.awin) src.push('AWIN');
+      if (st.rakuten) src.push('Rakuten');
+      if (st.openai) src.push('OpenAI');
+      if (st.heygen) src.push('HeyGen');
+      document.getElementById('stat_sources').textContent = 'Sources: ' + (src.join(' • ') || 'none');
+
+      // clicks & revenue keys if present (some data shapes may vary)
+      // health
+      healthStatus.textContent = 'OK';
+      log('stats refreshed', { total:d.total_links, pending:d.pending, sent:d.sent, clicks:d.clicks_total || 0 });
+
+    } catch (err) {
+      healthStatus.textContent = 'ERROR';
+      log('fetchStats error', err.message || err);
     }
-    setInterval(refresh, 15000); refresh();
-  </script>
+  }
+
+  async function startBot() {
+    try {
+      const res = await axios.post('/start');
+      log('Start requested', res.data || res.status);
+      await fetchStats();
+    } catch (err) {
+      log('start error', err.response ? err.response.data : err.message);
+    }
+  }
+  async function stopBot() {
+    try {
+      const res = await axios.post('/stop');
+      log('Stop requested', res.data || res.status);
+      await fetchStats();
+    } catch (err) {
+      log('stop error', err.response ? err.response.data : err.message);
+    }
+  }
+
+  async function refreshNow() {
+    try {
+      const res = await axios.post('/refresh');
+      log('Refresh queued', res.data || res.status);
+      // show immediate stats & increases
+      setTimeout(fetchStats, 1200);
+    } catch (err) {
+      log('refresh error', err.response ? err.response.data : err.message);
+    }
+  }
+
+  async function enqueueLink() {
+    const url = manualUrl.value && manualUrl.value.trim();
+    if (!url) { alert('Enter a URL'); return; }
+    try {
+      const res = await axios.post('/enqueue', { url });
+      log('Enqueued manual link', res.data || res.status);
+      manualUrl.value = '';
+      fetchStats();
+    } catch (err) {
+      log('enqueue error', err.response ? err.response.data : err.message);
+      alert('Enqueue failed. Check server logs.');
+    }
+  }
+
+  // utilities
+  function shorten(text, n=64){
+    if (!text) return '';
+    if (text.length <= n) return text;
+    return text.slice(0, n/2) + '…' + text.slice(-n/2);
+  }
+  function formatSeconds(s){
+    if (s === null || s === undefined) return '—';
+    s = Number(s) || 0;
+    if (s <= 0) return 'Now';
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    if (m > 0) return `${m}m ${sec}s`;
+    return `${sec}s`;
+  }
+
+  // Bind events
+  refreshBtn.addEventListener('click', () => { log('manual refresh pressed'); refreshNow(); });
+  startBtn.addEventListener('click', () => { startBtn.disabled = true; startBot().finally(()=>startBtn.disabled=false); });
+  stopBtn.addEventListener('click', () => { stopBtn.disabled = true; stopBot().finally(()=>stopBtn.disabled=false); });
+  enqueueBtn.addEventListener('click', enqueueLink);
+  refreshSourcesBtn.addEventListener('click', () => { refreshNow(); });
+
+  saveInterval.addEventListener('click', saveLocalInterval);
+  saveRotation.addEventListener('click', saveLocalRotation);
+
+  // Auto polling
+  let pollInterval = 10000;
+  let pollHandle;
+  function startPolling(){
+    fetchStats();
+    pollHandle = setInterval(fetchStats, pollInterval);
+  }
+  function stopPolling(){
+    if (pollHandle) clearInterval(pollHandle);
+  }
+
+  // init
+  (function init(){
+    loadLocalSettings();
+    startPolling();
+    // health check
+    setInterval(async ()=>{
+      try {
+        const r = await axios.get('/health');
+        document.getElementById('healthStatus').textContent = r.data.ok ? 'OK' : 'NO';
+      } catch (e) { document.getElementById('healthStatus').textContent = 'DOWN'; log('health check failed'); }
+    }, 15000);
+    // show saved rotation note
+    const rot = localStorage.getItem('rotation_mode') || 'alternate';
+    log('rotation mode', rot);
+  })();
+
+  // keyboard shortcut: R to refresh
+  document.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'r') refreshNow(); });
+
+</script>
 </body>
 </html>
