@@ -37,6 +37,48 @@ def get_db():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
+# ensure core tables exist (safe, idempotent)
+def ensure_tables():
+    try:
+        conn, cur = get_db()
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS posts (
+            id SERIAL PRIMARY KEY,
+            url TEXT UNIQUE NOT NULL,
+            source TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT now(),
+            posted_at TIMESTAMPTZ,
+            meta JSONB DEFAULT '{}'::jsonb
+        );
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS clicks (
+            id SERIAL PRIMARY KEY,
+            post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+            ip TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        """)
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        """)
+        conn.commit()
+        conn.close()
+    except Exception:
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        logger.exception("ensure_tables failed")
+
+ensure_tables()
+
 # Flask-Login
 class User(UserMixin):
     def __init__(self, email): self.id = email
@@ -119,8 +161,7 @@ def login():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # templates/dashboard.html fetches /api/stats via JS to populate values.
-    # supply public_url for redirect links if needed
+    # templates/dashboard.html will query /api/stats
     return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL)
 
 @app.route("/logout")
@@ -153,16 +194,35 @@ def redirect_tracking(post_id):
         logger.exception("Redirect error: %s", e)
         abort(500)
 
-# API for dashboard: returns both legacy and dashboard-HTML-expected fields
+# Helper: get & set persistent setting
+def db_get_setting(key, fallback=None):
+    try:
+        conn, cur = get_db()
+        cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+        row = cur.fetchone()
+        conn.close()
+        return row["value"] if row else fallback
+    except Exception:
+        logger.exception("db_get_setting")
+        return fallback
+
+def db_set_setting(key, value):
+    try:
+        conn, cur = get_db()
+        cur.execute("INSERT INTO settings (key, value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", (key, str(value)))
+        conn.commit(); conn.close()
+        return True
+    except Exception:
+        logger.exception("db_set_setting")
+        return False
+
+# API for dashboard
 @app.route("/api/stats")
 @login_required
 def api_stats():
     stat = {
         "total_links": 0, "pending":0, "sent":0, "failed":0,
         "last_posted_at": None, "next_post_in_seconds": None, "clicks_total":0,
-        # Legacy / dashboard fields below:
-        "clicks": 0, "conversions": 0, "revenue": 0.0, "last_post_time": None,
-        "chart_labels": [], "chart_values": [],
         "top_links": [], "recent_posts": [], "statuses": {}
     }
     try:
@@ -179,20 +239,8 @@ def api_stats():
         row = cur.fetchone()
         if row and row["posted_at"]:
             stat["last_posted_at"] = row["posted_at"].astimezone(timezone.utc).isoformat()
-            stat["last_post_time"] = stat["last_posted_at"]
         cur.execute("SELECT COUNT(*) as c FROM clicks")
-        clicks_total = cur.fetchone()["c"] or 0
-        stat["clicks_total"] = clicks_total
-        stat["clicks"] = clicks_total  # for dashboard.html compatibility
-        # conversions & revenue: if you have an earnings table, this will pick it up
-        try:
-            cur.execute("SELECT COUNT(*) as c FROM earnings")
-            stat["conversions"] = cur.fetchone()["c"] or 0
-            cur.execute("SELECT COALESCE(SUM(amount),0) as s FROM earnings")
-            stat["revenue"] = float(cur.fetchone()["s"] or 0.0)
-        except Exception:
-            stat["conversions"] = 0
-            stat["revenue"] = 0.0
+        stat["clicks_total"] = cur.fetchone()["c"] or 0
         # top links by clicks (join)
         cur.execute("""
             SELECT p.id, p.url, COUNT(c.id) AS clicks
@@ -214,7 +262,7 @@ def api_stats():
                 "posted_at": r["posted_at"].astimezone(timezone.utc).isoformat() if r["posted_at"] else None
             })
         stat["recent_posts"] = recent
-        # statuses (simple health probes)
+        # statuses (simple health probes out of DB presence)
         stat["statuses"] = {
             "awin": bool(os.getenv("AWIN_PUBLISHER_ID")),
             "rakuten": bool(os.getenv("RAKUTEN_CLIENT_ID")),
@@ -223,30 +271,9 @@ def api_stats():
             "twilio": bool(os.getenv("TWILIO_SID") and os.getenv("TWILIO_TOKEN"))
         }
         conn.close()
-
-        # build a simple activity chart (posts-per-hour for last 12 hours)
-        try:
-            conn, cur = get_db()
-            cur.execute("""
-                SELECT date_trunc('hour', coalesce(posted_at, created_at)) as hr, count(*) as cnt
-                FROM posts WHERE (posted_at IS NOT NULL OR created_at IS NOT NULL)
-                AND created_at >= now() - interval '24 hours'
-                GROUP BY hr ORDER BY hr ASC
-            """)
-            rows = cur.fetchall()
-            labels = []
-            values = []
-            for r in rows:
-                labels.append(r["hr"].astimezone(timezone.utc).strftime("%H:%M"))
-                values.append(int(r["cnt"] or 0))
-            stat["chart_labels"] = labels
-            stat["chart_values"] = values
-            conn.close()
-        except Exception:
-            stat["chart_labels"], stat["chart_values"] = [], []
-        # next_post_in_seconds calculation (based on last_posted_at)
-        interval = int(os.getenv("POST_INTERVAL_SECONDS", "3600"))
-        if stat.get("last_posted_at"):
+        # next_post_in_seconds calculation (based on last_posted_at and interval setting)
+        interval = int(db_get_setting("post_interval_seconds", fallback=os.getenv("POST_INTERVAL_SECONDS", str(3*3600))))
+        if stat["last_posted_at"]:
             last = datetime.fromisoformat(stat["last_posted_at"])
             last_ts = last.replace(tzinfo=timezone.utc).timestamp()
             now_ts = datetime.now(timezone.utc).timestamp()
@@ -261,7 +288,6 @@ def api_stats():
 
 # Admin API actions
 def trigger_refresh_background():
-    # import worker functions lazily to avoid circular imports on startup
     try:
         from worker import refresh_all_sources
         saved = refresh_all_sources()
@@ -308,36 +334,39 @@ def stop_worker_route():
         logger.exception("stop failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-# endpoint for dashboard buttons (start/stop) - used by dashboard's JS
+# control endpoint used by dashboard (start/stop)
 @app.route("/api/control", methods=["POST"])
 @login_required
 def api_control():
     data = request.get_json() or {}
-    action = data.get("action", "").lower()
+    action = data.get("action")
     if action == "start":
-        Thread(target=lambda: __import__("worker").start_worker_background(), daemon=True).start()
-        return jsonify({"status":"started"}), 200
+        Thread(target=start_worker_background, daemon=True).start()
+        return jsonify({"status":"started"})
     if action == "stop":
         try:
             import worker
             worker.stop_worker()
-            return jsonify({"status":"stopped"}), 200
-        except Exception as e:
-            logger.exception("stop failed: %s", e)
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"status":"stop_requested"})
+        except Exception:
+            logger.exception("stop fail")
+            return jsonify({"error":"stop failed"}), 500
     return jsonify({"error":"unknown action"}), 400
 
-# interval update endpoint (dashboard control)
+# change interval (seconds) persistently
 @app.route("/api/interval", methods=["POST"])
 @login_required
 def api_interval():
     data = request.get_json() or {}
-    interval = int(data.get("interval") or 0)
+    interval = int(data.get("interval", 0))
     if interval <= 0:
         return jsonify({"error":"invalid interval"}), 400
-    # set env var for new interval (effective for newly started worker only)
-    os.environ["POST_INTERVAL_SECONDS"] = str(int(interval) * 60)  # incoming is minutes in UI
-    return jsonify({"status":"ok","interval_seconds": os.environ["POST_INTERVAL_SECONDS"]}), 200
+    # interpret values in minutes from dashboard select (5,15,30,60). Save seconds.
+    seconds = interval * 60
+    ok = db_set_setting("post_interval_seconds", seconds)
+    if ok:
+        return jsonify({"status":"updated", "post_interval_seconds": seconds})
+    return jsonify({"error":"failed to save"}), 500
 
 @app.route("/health")
 def health():
@@ -347,7 +376,12 @@ def health():
 def not_found(e):
     return render_template("welcome.html", company=COMPANY), 404
 
+# convenience: when starting the app via `python app.py`, ensure default interval stored
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
+    # default 3 hours (user choice)
+    current = db_get_setting("post_interval_seconds")
+    if not current:
+        db_set_setting("post_interval_seconds", str(3*3600))
     logger.info("Starting app on port %s", port)
     app.run(host="0.0.0.0", port=port, debug=False)
