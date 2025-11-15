@@ -1,59 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>AutoAffiliate Dashboard</title>
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-<style>
-body { padding: 20px; }
-#posts_table td, #posts_table th { font-size: 0.9rem; }
-</style>
+  <meta charset="UTF-8">
+  <title>Affiliate Autoposter Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
+    h1 { color: #333; }
+    section { margin-bottom: 30px; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    label { display: block; margin-top: 10px; }
+    input, select, textarea { width: 100%; padding: 8px; margin-top: 5px; }
+    button { margin-top: 15px; padding: 10px 20px; background: #0078d7; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #005a9e; }
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background: #eee; }
+    .status-ok { color: green; }
+    .status-failed { color: red; }
+  </style>
 </head>
 <body>
-<div class="container">
-    <h1>AutoAffiliate Dashboard</h1>
-    <div class="mb-3">
-        <button class="btn btn-success" onclick="startWorker()">Start Worker</button>
-        <button class="btn btn-danger" onclick="stopWorker()">Stop Worker</button>
-        <button class="btn btn-primary" onclick="refreshSources()">Refresh Sources</button>
-        <button class="btn btn-warning" onclick="postNext()">Post Next Pending</button>
-    </div>
+  <h1>Affiliate Autoposter Dashboard</h1>
 
-    <h3>Worker Status</h3>
-    <div id="status">Loading...</div>
+  <!-- Worker Control -->
+  <section>
+    <h2>Worker Control</h2>
+    <button onclick="startWorker()">Start Worker</button>
+    <button onclick="stopWorker()">Stop Worker</button>
+    <p id="workerStatus">Status: unknown</p>
+  </section>
 
-    <h3>Recent Posts</h3>
-    <table class="table table-striped" id="posts_table">
-        <thead>
-            <tr>
-                <th>ID</th><th>URL</th><th>Status</th><th>Created At</th><th>Posted At</th><th>Meta</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
+  <!-- Enqueue Post -->
+  <section>
+    <h2>Enqueue Post</h2>
+    <form id="enqueueForm">
+      <label>Title <input type="text" name="title" required></label>
+      <label>Slug <input type="text" name="slug" required></label>
+      <label>Body <textarea name="body"></textarea></label>
+      <label>Platform
+        <select name="platform">
+          <option value="twitter">Twitter</option>
+          <option value="telegram">Telegram</option>
+          <option value="facebook">Facebook</option>
+          <option value="instagram">Instagram</option>
+          <option value="tiktok">TikTok</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+      </label>
+      <label>Product URL <input type="url" name="url"></label>
+      <label>Source Hint (rakuten/awin) <input type="text" name="source"></label>
+      <label>Image URL <input type="url" name="image_url"></label>
+      <button type="submit">Queue Post</button>
+    </form>
+    <p id="enqueueResult"></p>
+  </section>
+
+  <!-- Posts -->
+  <section>
+    <h2>Posts</h2>
+    <button onclick="loadPosts()">Refresh Posts</button>
+    <table id="postsTable">
+      <thead>
+        <tr><th>ID</th><th>Title</th><th>Platform</th><th>Status</th><th>Clicks</th><th>Error</th></tr>
+      </thead>
+      <tbody></tbody>
     </table>
-</div>
+  </section>
+
+  <!-- Analytics -->
+  <section>
+    <h2>Analytics</h2>
+    <button onclick="loadAnalytics()">Refresh Analytics</button>
+    <pre id="analyticsData"></pre>
+  </section>
+
+  <!-- Metrics -->
+  <section>
+    <h2>Metrics</h2>
+    <button onclick="loadMetrics()">Refresh Metrics</button>
+    <pre id="metricsData"></pre>
+  </section>
 
 <script>
-async function updateStatus(){
-    const res = await axios.get("/api/status");
-    document.getElementById("status").innerText = `Worker Running: ${res.data.worker_running}, Stop Requested: ${res.data.stop_requested}`;
+const API = location.origin;
+
+async function startWorker() {
+  const r = await fetch(API + "/worker/start", {method:"POST"});
+  document.getElementById("workerStatus").textContent = "Status: " + (await r.json()).status;
 }
-async function loadPosts(){
-    const res = await axios.get("/api/posts");
-    const tbody = document.querySelector("#posts_table tbody");
-    tbody.innerHTML = "";
-    res.data.forEach(p=>{
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${p.id}</td><td>${p.url}</td><td>${p.status}</td><td>${p.created_at}</td><td>${p.posted_at||''}</td><td>${JSON.stringify(p.meta)}</td>`;
-        tbody.appendChild(tr);
-    });
+async function stopWorker() {
+  const r = await fetch(API + "/worker/stop", {method:"POST"});
+  document.getElementById("workerStatus").textContent = "Status: " + (await r.json()).status;
 }
-async function startWorker(){ await axios.post("/api/start_worker"); updateStatus(); }
-async function stopWorker(){ await axios.post("/api/stop_worker"); updateStatus(); }
-async function refreshSources(){ const r=await axios.post("/api/refresh_sources"); alert(`Links saved: ${r.data.links_saved}`); loadPosts(); }
-async function postNext(){ const r=await axios.post("/api/post_next"); alert(`Post success: ${r.data.success}`); loadPosts(); }
-setInterval(updateStatus,5000); setInterval(loadPosts,7000); updateStatus(); loadPosts();
+async function loadPosts() {
+  const r = await fetch(API + "/posts");
+  const posts = await r.json();
+  const tbody = document.querySelector("#postsTable tbody");
+  tbody.innerHTML = "";
+  posts.forEach(p => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${p.id}</td><td>${p.title}</td><td>${p.platform}</td>
+                    <td class="${p.status==='failed'?'status-failed':'status-ok'}">${p.status}</td>
+                    <td>${p.click_count}</td><td>${p.error_message||""}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+async function loadAnalytics() {
+  const r = await fetch(API + "/analytics");
+  document.getElementById("analyticsData").textContent = JSON.stringify(await r.json(), null, 2);
+}
+async function loadMetrics() {
+  const r = await fetch(API + "/metrics");
+  document.getElementById("metricsData").textContent = JSON.stringify(await r.json(), null, 2);
+}
+document.getElementById("enqueueForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const data = Object.fromEntries(new FormData(e.target).entries());
+  const r = await fetch(API + "/enqueue", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
+  document.getElementById("enqueueResult").textContent = JSON.stringify(await r.json());
+});
 </script>
 </body>
 </html>
