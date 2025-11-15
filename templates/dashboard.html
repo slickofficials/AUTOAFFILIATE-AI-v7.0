@@ -1,123 +1,100 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Affiliate Autoposter Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f9f9f9; }
-    h1 { color: #333; }
-    section { margin-bottom: 30px; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    label { display: block; margin-top: 10px; }
-    input, select, textarea { width: 100%; padding: 8px; margin-top: 5px; }
-    button { margin-top: 15px; padding: 10px 20px; background: #0078d7; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #005a9e; }
-    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background: #eee; }
-    .status-ok { color: green; }
-    .status-failed { color: red; }
-  </style>
+    <title>AutoAffiliate Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial; background:#111; color:#eee; padding:20px; }
+        h1 { color:#4af; }
+        button { padding:10px 16px; margin:5px; background:#4af; color:#fff; border:none; border-radius:6px; cursor:pointer; }
+        button.red { background:#d33; }
+        .card { background:#222; padding:20px; margin-top:20px; border-radius:10px; }
+        input[type=text] { width:70%; padding:10px; border-radius:6px; border:1px solid #555; background:#000; color:#eee;}
+        table { width:100%; border-collapse:collapse; margin-top:20px; }
+        th,td { padding:10px; border-bottom:1px solid #444; }
+        .ok { color:#4f4; }
+        .fail { color:#f44; }
+    </style>
 </head>
 <body>
-  <h1>Affiliate Autoposter Dashboard</h1>
 
-  <!-- Worker Control -->
-  <section>
-    <h2>Worker Control</h2>
+<h1>AutoAffiliate Dashboard</h1>
+
+<div class="card">
+    <h2>Worker Status</h2>
+    <p>
+        Status: 
+        {% if worker_running %}
+            <span class="ok">RUNNING</span>
+        {% else %}
+            <span class="fail">STOPPED</span>
+        {% endif %}
+    </p>
     <button onclick="startWorker()">Start Worker</button>
-    <button onclick="stopWorker()">Stop Worker</button>
-    <p id="workerStatus">Status: unknown</p>
-  </section>
+    <button class="red" onclick="stopWorker()">Stop Worker</button>
+</div>
 
-  <!-- Enqueue Post -->
-  <section>
-    <h2>Enqueue Post</h2>
-    <form id="enqueueForm">
-      <label>Title <input type="text" name="title" required></label>
-      <label>Slug <input type="text" name="slug" required></label>
-      <label>Body <textarea name="body"></textarea></label>
-      <label>Platform
-        <select name="platform">
-          <option value="twitter">Twitter</option>
-          <option value="telegram">Telegram</option>
-          <option value="facebook">Facebook</option>
-          <option value="instagram">Instagram</option>
-          <option value="tiktok">TikTok</option>
-          <option value="whatsapp">WhatsApp</option>
-        </select>
-      </label>
-      <label>Product URL <input type="url" name="url"></label>
-      <label>Source Hint (rakuten/awin) <input type="text" name="source"></label>
-      <label>Image URL <input type="url" name="image_url"></label>
-      <button type="submit">Queue Post</button>
-    </form>
-    <p id="enqueueResult"></p>
-  </section>
+<div class="card">
+    <h2>Stats</h2>
+    <p>Sent posts: <b>{{ sent_count }}</b></p>
+    <p>Pending: <b>{{ pending_count }}</b></p>
+</div>
 
-  <!-- Posts -->
-  <section>
-    <h2>Posts</h2>
-    <button onclick="loadPosts()">Refresh Posts</button>
-    <table id="postsTable">
-      <thead>
-        <tr><th>ID</th><th>Title</th><th>Platform</th><th>Status</th><th>Clicks</th><th>Error</th></tr>
-      </thead>
-      <tbody></tbody>
+<div class="card">
+    <h2>Manual Add Link</h2>
+    <input id="man_url" type="text" placeholder="https://product.com/deal">
+    <button onclick="addLink()">Add</button>
+</div>
+
+<div class="card">
+    <h2>Force Refresh Affiliate Sources</h2>
+    <button onclick="refreshSources()">Refresh Now</button>
+</div>
+
+<div class="card">
+    <h2>Recent Posts</h2>
+    <table>
+        <tr>
+            <th>ID</th><th>URL</th><th>Source</th><th>Status</th><th>Created</th><th>Posted</th>
+        </tr>
+        {% for p in posts %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td><a href="{{ p.url }}" target="_blank" style="color:#4af">{{ p.url }}</a></td>
+            <td>{{ p.source }}</td>
+            <td>{{ p.status }}</td>
+            <td>{{ p.created_at }}</td>
+            <td>{{ p.posted_at }}</td>
+        </tr>
+        {% endfor %}
     </table>
-  </section>
-
-  <!-- Analytics -->
-  <section>
-    <h2>Analytics</h2>
-    <button onclick="loadAnalytics()">Refresh Analytics</button>
-    <pre id="analyticsData"></pre>
-  </section>
-
-  <!-- Metrics -->
-  <section>
-    <h2>Metrics</h2>
-    <button onclick="loadMetrics()">Refresh Metrics</button>
-    <pre id="metricsData"></pre>
-  </section>
+</div>
 
 <script>
-const API = location.origin;
+function addLink(){
+    let u = document.getElementById("man_url").value;
+    fetch("/api/add", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({url:u})
+    }).then(r=>r.json()).then(x=>location.reload());
+}
 
-async function startWorker() {
-  const r = await fetch(API + "/worker/start", {method:"POST"});
-  document.getElementById("workerStatus").textContent = "Status: " + (await r.json()).status;
+function refreshSources(){
+    fetch("/api/refresh", {method:"POST"})
+    .then(r=>r.json()).then(x=>location.reload());
 }
-async function stopWorker() {
-  const r = await fetch(API + "/worker/stop", {method:"POST"});
-  document.getElementById("workerStatus").textContent = "Status: " + (await r.json()).status;
+
+function startWorker(){
+    fetch("/api/worker/start", {method:"POST"})
+    .then(r=>r.json()).then(x=>location.reload());
 }
-async function loadPosts() {
-  const r = await fetch(API + "/posts");
-  const posts = await r.json();
-  const tbody = document.querySelector("#postsTable tbody");
-  tbody.innerHTML = "";
-  posts.forEach(p => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${p.id}</td><td>${p.title}</td><td>${p.platform}</td>
-                    <td class="${p.status==='failed'?'status-failed':'status-ok'}">${p.status}</td>
-                    <td>${p.click_count}</td><td>${p.error_message||""}</td>`;
-    tbody.appendChild(tr);
-  });
+
+function stopWorker(){
+    fetch("/api/worker/stop", {method:"POST"})
+    .then(r=>r.json()).then(x=>location.reload());
 }
-async function loadAnalytics() {
-  const r = await fetch(API + "/analytics");
-  document.getElementById("analyticsData").textContent = JSON.stringify(await r.json(), null, 2);
-}
-async function loadMetrics() {
-  const r = await fetch(API + "/metrics");
-  document.getElementById("metricsData").textContent = JSON.stringify(await r.json(), null, 2);
-}
-document.getElementById("enqueueForm").addEventListener("submit", async e => {
-  e.preventDefault();
-  const data = Object.fromEntries(new FormData(e.target).entries());
-  const r = await fetch(API + "/enqueue", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(data)});
-  document.getElementById("enqueueResult").textContent = JSON.stringify(await r.json());
-});
 </script>
+
 </body>
 </html>
