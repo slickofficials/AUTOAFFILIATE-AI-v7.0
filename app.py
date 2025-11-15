@@ -1,192 +1,85 @@
-import os
-import json
+from flask import Flask, render_template, jsonify, request
+import threading
 import logging
-import requests
-from datetime import datetime, timezone
-from flask import Flask, request, jsonify, render_template, redirect, abort
-import psycopg
-from psycopg.rows import dict_row
+import worker  # your fixed worker.py
 
-# ---------------------------
-# Logging
-# ---------------------------
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app")
 
 # ---------------------------
-# Config / Env
+# Worker thread control
 # ---------------------------
-DATABASE_URL = os.getenv("DATABASE_URL")
-APP_PUBLIC_URL = os.getenv("APP_PUBLIC_URL") or ""
+worker_thread = None
 
-# import worker module
-import worker
+def start_worker_thread():
+    global worker_thread
+    if worker_thread and worker_thread.is_alive():
+        return False
+    worker_thread = threading.Thread(target=worker.start_worker_background, daemon=True)
+    worker_thread.start()
+    return True
 
-# ---------------------------
-# Database helpers
-# ---------------------------
-def get_db_conn():
-    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
-    return conn, conn.cursor()
-
-# ---------------------------
-# Flask Init
-# ---------------------------
-app = Flask(__name__, template_folder="templates")
+def stop_worker_thread():
+    worker.stop_worker()
+    return True
 
 # ---------------------------
-# Redirect Handler
-# /r/<id> → resolve affiliate URL + count click
+# Routes
 # ---------------------------
-@app.get("/r/<int:post_id>")
-def redirect_click(post_id):
-    try:
-        conn, cur = get_db_conn()
-        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            abort(404)
-
-        target = row["url"]
-
-        # log click
-        ua = request.headers.get("User-Agent", "")
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-        cur.execute(
-            "INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,now())",
-            (post_id, ip, ua)
-        )
-        conn.commit()
-        conn.close()
-
-        return redirect(target, code=302)
-    except Exception:
-        logger.exception("/r/<id> failed")
-        return redirect(target, code=302)
-
-# ---------------------------
-# Dashboard HTML
-# ---------------------------
-@app.get("/")
+@app.route("/")
 def dashboard():
+    return render_template("dashboard.html")
+
+@app.route("/api/status")
+def api_status():
+    return jsonify({
+        "worker_running": worker._worker_running,
+        "stop_requested": worker._stop_requested
+    })
+
+@app.route("/api/start_worker", methods=["POST"])
+def api_start_worker():
+    started = start_worker_thread()
+    return jsonify({"started": started})
+
+@app.route("/api/stop_worker", methods=["POST"])
+def api_stop_worker():
+    stopped = stop_worker_thread()
+    return jsonify({"stopped": stopped})
+
+@app.route("/api/refresh_sources", methods=["POST"])
+def api_refresh_sources():
+    count = worker.refresh_all_sources()
+    return jsonify({"links_saved": count})
+
+@app.route("/api/post_next", methods=["POST"])
+def api_post_next():
+    success = worker.post_next_pending()
+    return jsonify({"success": success})
+
+@app.route("/api/posts")
+def api_posts():
     try:
-        conn, cur = get_db_conn()
-
-        # recent posts
-        cur.execute(
-            "SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY id DESC LIMIT 40"
-        )
-        posts = cur.fetchall()
-
-        # worker state
-        running = worker._worker_running
-
-        # settings
-        cur.execute("SELECT key, value FROM settings")
-        settings_raw = cur.fetchall()
-        settings = {row["key"]: row["value"] for row in settings_raw}
-
-        # analytics count
-        cur.execute("SELECT count(*) FROM posts WHERE status='sent'")
-        sent_count = cur.fetchone()["count"]
-
-        cur.execute("SELECT count(*) FROM posts WHERE status='pending'")
-        pending_count = cur.fetchone()["count"]
-
+        conn, cur = worker.get_db_conn()
+        cur.execute("SELECT id, url, status, created_at, posted_at, meta FROM posts ORDER BY created_at DESC LIMIT 50")
+        rows = cur.fetchall()
         conn.close()
+        return jsonify(rows)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-        return render_template(
-            "dashboard.html",
-            posts=posts,
-            worker_running=running,
-            settings=settings,
-            sent_count=sent_count,
-            pending_count=pending_count
-        )
-    except Exception:
-        logger.exception("dashboard failed")
-        return "Dashboard failed", 500
-
-# ---------------------------
-# Manual Add Link
-# ---------------------------
-@app.post("/api/add")
-def api_add():
-    data = request.json
-    url = data.get("url")
-    if not url:
-        return jsonify({"error": "missing url"}), 400
-    try:
-        saved = worker.save_links_to_db([url], source="manual")
-        return jsonify({"saved": saved})
-    except Exception:
-        logger.exception("/api/add error")
-        return jsonify({"error": "internal"}), 500
-
-# ---------------------------
-# Force refresh affiliate sources
-# ---------------------------
-@app.post("/api/refresh")
-def api_refresh():
-    try:
-        saved = worker.refresh_all_sources()
-        return jsonify({"saved": saved})
-    except Exception:
-        logger.exception("/api/refresh error")
-        return jsonify({"error": "internal"}), 500
-
-# ---------------------------
-# Worker controls
-# ---------------------------
-@app.post("/api/worker/start")
-def api_worker_start():
-    try:
-        worker.start_worker_background()
-        return jsonify({"running": True})
-    except Exception:
-        logger.exception("worker start failed")
-        return jsonify({"error": "internal"}), 500
-
-@app.post("/api/worker/stop")
-def api_worker_stop():
-    try:
-        worker.stop_worker()
-        return jsonify({"running": False})
-    except Exception:
-        logger.exception("worker stop failed")
-        return jsonify({"error": "internal"}), 500
-
-# ---------------------------
-# Update settings
-# ---------------------------
-@app.post("/api/settings")
+@app.route("/api/settings", methods=["POST"])
 def api_settings():
     data = request.json or {}
     try:
-        conn, cur = get_db_conn()
+        conn, cur = worker.get_db_conn()
         for k, v in data.items():
-            cur.execute(
-                "INSERT INTO settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
-                (k, v)
-            )
-        conn.commit()
-        conn.close()
-        return jsonify({"updated": True})
-    except Exception:
-        logger.exception("settings update error")
-        return jsonify({"error": "internal"}), 500
+            cur.execute("INSERT INTO settings(key,value) VALUES (%s,%s) ON CONFLICT(key) DO UPDATE SET value=%s", (k,v,v))
+        conn.commit(); conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-# ---------------------------
-# Health Check
-# ---------------------------
-@app.get("/health")
-def health():
-    return {"status": "ok", "worker_running": worker._worker_running}
-
-# ---------------------------
-# Launch
-# ---------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
+    app.run(host="0.0.0.0", port=5000, debug=True)
