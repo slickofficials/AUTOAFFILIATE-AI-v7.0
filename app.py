@@ -1,90 +1,192 @@
-#!/usr/bin/env python3
-import os, sys, logging, subprocess, threading, psycopg
+import os
+import json
+import logging
+import requests
+from datetime import datetime, timezone
+from flask import Flask, request, jsonify, render_template, redirect, abort
+import psycopg
 from psycopg.rows import dict_row
-from flask import Flask, request, jsonify, redirect
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL","INFO").upper(),
-    format="%(asctime)s %(levelname)s %(message)s")
+# ---------------------------
+# Logging
+# ---------------------------
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("app")
 
+# ---------------------------
+# Config / Env
+# ---------------------------
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL: raise RuntimeError("DATABASE_URL not set")
+APP_PUBLIC_URL = os.getenv("APP_PUBLIC_URL") or ""
 
-def connect_db(): return psycopg.connect(DATABASE_URL,row_factory=dict_row)
-conn = connect_db(); cur = conn.cursor()
+# import worker module
+import worker
 
-app = Flask(__name__)
-worker_lock = threading.Lock(); worker_process=None
+# ---------------------------
+# Database helpers
+# ---------------------------
+def get_db_conn():
+    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+    return conn, conn.cursor()
 
-def enqueue_post(title,slug,body,platform,url,source,image_url):
-    cur.execute("""INSERT INTO public.posts (title,slug,body,platform,url,source,image_url,status)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,'queued') RETURNING id""",
-                (title,slug,body or "",platform.lower(),url,source,image_url))
-    pid=cur.fetchone()["id"]; conn.commit(); return pid
+# ---------------------------
+# Flask Init
+# ---------------------------
+app = Flask(__name__, template_folder="templates")
 
-def log_click(pid,ip,ua):
-    cur.execute("INSERT INTO public.clicks (post_id,ip,user_agent) VALUES (%s,%s,%s)",(pid,ip,ua or "")); conn.commit()
+# ---------------------------
+# Redirect Handler
+# /r/<id> → resolve affiliate URL + count click
+# ---------------------------
+@app.get("/r/<int:post_id>")
+def redirect_click(post_id):
+    try:
+        conn, cur = get_db_conn()
+        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            abort(404)
 
+        target = row["url"]
+
+        # log click
+        ua = request.headers.get("User-Agent", "")
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+        cur.execute(
+            "INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,now())",
+            (post_id, ip, ua)
+        )
+        conn.commit()
+        conn.close()
+
+        return redirect(target, code=302)
+    except Exception:
+        logger.exception("/r/<id> failed")
+        return redirect(target, code=302)
+
+# ---------------------------
+# Dashboard HTML
+# ---------------------------
+@app.get("/")
+def dashboard():
+    try:
+        conn, cur = get_db_conn()
+
+        # recent posts
+        cur.execute(
+            "SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY id DESC LIMIT 40"
+        )
+        posts = cur.fetchall()
+
+        # worker state
+        running = worker._worker_running
+
+        # settings
+        cur.execute("SELECT key, value FROM settings")
+        settings_raw = cur.fetchall()
+        settings = {row["key"]: row["value"] for row in settings_raw}
+
+        # analytics count
+        cur.execute("SELECT count(*) FROM posts WHERE status='sent'")
+        sent_count = cur.fetchone()["count"]
+
+        cur.execute("SELECT count(*) FROM posts WHERE status='pending'")
+        pending_count = cur.fetchone()["count"]
+
+        conn.close()
+
+        return render_template(
+            "dashboard.html",
+            posts=posts,
+            worker_running=running,
+            settings=settings,
+            sent_count=sent_count,
+            pending_count=pending_count
+        )
+    except Exception:
+        logger.exception("dashboard failed")
+        return "Dashboard failed", 500
+
+# ---------------------------
+# Manual Add Link
+# ---------------------------
+@app.post("/api/add")
+def api_add():
+    data = request.json
+    url = data.get("url")
+    if not url:
+        return jsonify({"error": "missing url"}), 400
+    try:
+        saved = worker.save_links_to_db([url], source="manual")
+        return jsonify({"saved": saved})
+    except Exception:
+        logger.exception("/api/add error")
+        return jsonify({"error": "internal"}), 500
+
+# ---------------------------
+# Force refresh affiliate sources
+# ---------------------------
+@app.post("/api/refresh")
+def api_refresh():
+    try:
+        saved = worker.refresh_all_sources()
+        return jsonify({"saved": saved})
+    except Exception:
+        logger.exception("/api/refresh error")
+        return jsonify({"error": "internal"}), 500
+
+# ---------------------------
+# Worker controls
+# ---------------------------
+@app.post("/api/worker/start")
+def api_worker_start():
+    try:
+        worker.start_worker_background()
+        return jsonify({"running": True})
+    except Exception:
+        logger.exception("worker start failed")
+        return jsonify({"error": "internal"}), 500
+
+@app.post("/api/worker/stop")
+def api_worker_stop():
+    try:
+        worker.stop_worker()
+        return jsonify({"running": False})
+    except Exception:
+        logger.exception("worker stop failed")
+        return jsonify({"error": "internal"}), 500
+
+# ---------------------------
+# Update settings
+# ---------------------------
+@app.post("/api/settings")
+def api_settings():
+    data = request.json or {}
+    try:
+        conn, cur = get_db_conn()
+        for k, v in data.items():
+            cur.execute(
+                "INSERT INTO settings (key,value) VALUES (%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+                (k, v)
+            )
+        conn.commit()
+        conn.close()
+        return jsonify({"updated": True})
+    except Exception:
+        logger.exception("settings update error")
+        return jsonify({"error": "internal"}), 500
+
+# ---------------------------
+# Health Check
+# ---------------------------
 @app.get("/health")
-def health(): return jsonify({"status":"ok"})
+def health():
+    return {"status": "ok", "worker_running": worker._worker_running}
 
-@app.post("/enqueue")
-def enqueue():
-    d=request.get_json(force=True)
-    if not d.get("title") or not d.get("slug"): return jsonify({"error":"title and slug required"}),400
-    if d.get("platform","").lower() not in ("twitter","telegram","facebook","instagram","tiktok","whatsapp"):
-        return jsonify({"error":"invalid platform"}),400
-    if d.get("platform","").lower()=="instagram" and not d.get("image_url"):
-        return jsonify({"error":"instagram requires image_url"}),400
-    pid=enqueue_post(d["title"],d["slug"],d.get("body"),d.get("platform"),d.get("url"),d.get("source"),d.get("image_url"))
-    return jsonify({"queued":pid})
-
-@app.get("/posts")
-def posts():
-    cur.execute("""SELECT p.*,COALESCE(c.click_count,0) AS click_count
-                   FROM public.posts p
-                   LEFT JOIN (SELECT post_id,COUNT(*) AS click_count FROM public.clicks GROUP BY post_id) c
-                   ON p.id=c.post_id ORDER BY p.created_at DESC LIMIT 300""")
-    return jsonify(cur.fetchall())
-
-@app.get("/r/<slug>")
-def redirect_slug(slug):
-    cur.execute("SELECT * FROM public.posts WHERE slug=%s",(slug,)); post=cur.fetchone()
-    if not post: return jsonify({"error":"post not found"}),404
-    log_click(post["id"],request.remote_addr,request.headers.get("User-Agent",""))
-    target=post.get("deeplink") or post.get("url") or os.getenv("PUBLIC_URL","https://example.com")
-    return redirect(target,302)
-
-@app.get("/analytics")
-def analytics():
-    cur.execute("SELECT COUNT(*) AS total_clicks FROM public.clicks"); total=cur.fetchone()["total_clicks"]
-    cur.execute("SELECT p.platform,COUNT(c.id) AS clicks FROM public.posts p LEFT JOIN public.clicks c ON p.id=c.post_id GROUP BY p.platform"); per=cur.fetchall()
-    return jsonify({"total_clicks":total,"clicks_per_platform":per})
-
-@app.get("/metrics")
-def metrics():
-    cur.execute("SELECT status,COUNT(*) AS count FROM public.posts GROUP BY status"); status_counts={r["status"]:r["count"] for r in cur.fetchall()}
-    return jsonify({"status_counts":status_counts})
-
-@app.get("/worker/status")
-def worker_status(): return jsonify({"running":bool(worker_process and worker_process.poll() is None)})
-
-@app.post("/worker/start")
-def worker_start():
-    global worker_process
-    with worker_lock:
-        if worker_process and worker_process.poll() is None: return jsonify({"status":"already running"})
-        worker_process=subprocess.Popen([sys.executable,"worker.py"]); return jsonify({"status":"started"})
-
-@app.post("/worker/stop")
-def worker_stop():
-    global worker_process
-    with worker_lock:
-        if worker_process and worker_process.poll() is None:
-            worker_process.terminate()
-            try: worker_process.wait(timeout=10)
-            except subprocess.TimeoutExpired: worker_process.kill()
-            return jsonify({"status":"stopped"})
-        return jsonify({"status":"not running"})
-
-if __name__=="__main__": app.run(host="0.0.0.0",port=5000)
+# ---------------------------
+# Launch
+# ---------------------------
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "8080")))
