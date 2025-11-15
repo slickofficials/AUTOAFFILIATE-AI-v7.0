@@ -137,7 +137,7 @@ ensure_tables()
 def db_get_setting(key, fallback=None):
     try:
         conn, cur = get_db_conn()
-        cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+        cur.execute("SELECT value FROM public.settings WHERE key = %s", (some_key,))
         row = cur.fetchone()
         conn.close()
         return row["value"] if row else fallback
