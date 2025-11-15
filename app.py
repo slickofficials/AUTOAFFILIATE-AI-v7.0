@@ -100,7 +100,7 @@ def db_get_setting(key, fallback=None):
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+                cur.execute("SELECT value FROM public.settings WHERE key = %s", (some_key,))
                 row = cur.fetchone()
         return row["value"] if row else fallback
     except Exception:
