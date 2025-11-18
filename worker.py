@@ -78,7 +78,7 @@ queue = Queue(connection=redis_conn)
 ROTATION = [("awin", "B"), ("rakuten", "2"), ("awin", "C"), ("rakuten", "1"), ("awin", "A")]
 
 # -------------------------------
-# Database helpers
+# Database helpers — FIXED
 # -------------------------------
 def get_db_conn():
     if not DB_URL:
@@ -86,71 +86,93 @@ def get_db_conn():
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
-def safe_execute(sql, params=None):
+def ensure_tables():
+    """Ensure all tables exist and are correctly structured."""
     conn, cur = get_db_conn()
     try:
-        cur.execute(sql, params or ())
+        # Posts table
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS posts (
+            id SERIAL PRIMARY KEY,
+            url TEXT UNIQUE NOT NULL,
+            source TEXT,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMPTZ DEFAULT now(),
+            posted_at TIMESTAMPTZ,
+            meta JSONB DEFAULT '{}'::jsonb
+        );
+        """)
+
+        # Clicks table
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS clicks (
+            id SERIAL PRIMARY KEY,
+            post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
+            ip TEXT,
+            user_agent TEXT,
+            created_at TIMESTAMPTZ DEFAULT now()
+        );
+        """)
+
+        # Settings table — FIXED
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            setting_key TEXT PRIMARY KEY,
+            value TEXT
+        );
+        """)
+
         conn.commit()
+        logger.info("Tables ensured: posts, clicks, settings")
     except Exception:
         conn.rollback()
-        logger.exception("safe_execute failed for sql: %s", sql)
+        logger.exception("ensure_tables failed")
     finally:
         conn.close()
 
-def ensure_tables():
-    safe_execute("""
-    CREATE TABLE IF NOT EXISTS posts (
-        id SERIAL PRIMARY KEY,
-        url TEXT UNIQUE NOT NULL,
-        source TEXT,
-        status TEXT DEFAULT 'pending',
-        created_at TIMESTAMPTZ DEFAULT now(),
-        posted_at TIMESTAMPTZ,
-        meta JSONB DEFAULT '{}'::jsonb
-    );
-    """)
-    safe_execute("""
-    CREATE TABLE IF NOT EXISTS clicks (
-        id SERIAL PRIMARY KEY,
-        post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
-        ip TEXT,
-        user_agent TEXT,
-        created_at TIMESTAMPTZ DEFAULT now()
-    );
-    """)
-    safe_execute("""
-    CREATE TABLE IF NOT EXISTS settings (
-        setting_key TEXT PRIMARY KEY,
-        value TEXT
-    );
-    """)
-
 def db_get_setting(key, fallback=None):
-    try:
-        conn, cur = get_db_conn()
-        cur.execute("SELECT value FROM settings WHERE setting_key=%s", (key,))
-        row = cur.fetchone()
-        conn.close()
-        return row["value"] if row else fallback
-    except Exception:
-        logger.exception("db_get_setting")
-        return fallback
-
-def db_set_setting(key, value):
+    """Get a value from settings table, auto-creates table if needed."""
     try:
         conn, cur = get_db_conn()
         cur.execute("""
-            INSERT INTO settings(setting_key,value)
-            VALUES(%s,%s)
+        SELECT value FROM settings WHERE setting_key = %s
+        """, (key,))
+        row = cur.fetchone()
+        conn.close()
+        return row["value"] if row else fallback
+    except psycopg.errors.UndefinedTable:
+        # Table missing — auto-fix
+        logger.warning("Settings table missing — auto-creating")
+        ensure_tables()
+        return fallback
+    except psycopg.errors.UndefinedColumn:
+        # Column missing — drop & recreate table
+        logger.warning("Settings column missing — fixing table")
+        conn, cur = get_db_conn()
+        cur.execute("DROP TABLE IF EXISTS settings;")
+        conn.commit()
+        conn.close()
+        ensure_tables()
+        return fallback
+    except Exception:
+        logger.exception("db_get_setting failed")
+        return fallback
+
+def db_set_setting(key, value):
+    """Set or update a value in settings."""
+    try:
+        conn, cur = get_db_conn()
+        cur.execute("""
+            INSERT INTO settings(setting_key, value)
+            VALUES(%s, %s)
             ON CONFLICT (setting_key) DO UPDATE SET value=EXCLUDED.value
         """, (key, str(value)))
         conn.commit()
         conn.close()
         return True
     except Exception:
-        logger.exception("db_set_setting")
+        logger.exception("db_set_setting failed")
         return False
-
 ensure_tables()
 POST_INTERVAL_SECONDS = int(db_get_setting("post_interval_seconds", fallback=str(DEFAULT_CADENCE_SECONDS)))
 
