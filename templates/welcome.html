@@ -4,39 +4,71 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Welcome to AutoAffiliate</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #6C63FF, #00BFA6);
       height: 100vh;
+      overflow: hidden;
+      background: #0f0c29;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      color: #fff;
       display: flex;
       justify-content: center;
       align-items: center;
-      color: #fff;
+      position: relative;
+    }
+
+    /* Particle background */
+    .particle {
+      position: absolute;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.2);
+      animation: float 25s linear infinite;
+    }
+    .particle:nth-child(1){ width: 120px; height:120px; top:10%; left:5%; animation-duration: 30s; }
+    .particle:nth-child(2){ width: 80px; height:80px; top:30%; left:80%; animation-duration: 35s; }
+    .particle:nth-child(3){ width: 100px; height:100px; top:70%; left:25%; animation-duration: 40s; }
+    .particle:nth-child(4){ width: 50px; height:50px; top:50%; left:50%; animation-duration: 45s; }
+    @keyframes float {
+      0% { transform: translate(0,0) rotate(0deg);}
+      50% { transform: translate(50px,-50px) rotate(180deg);}
+      100% { transform: translate(0,0) rotate(360deg);}
     }
 
     .container {
-      background: rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(10px);
-      padding: 50px 60px;
-      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(15px);
+      padding: 50px 40px;
+      border-radius: 25px;
       text-align: center;
-      max-width: 400px;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-      animation: fadeIn 1s ease-in-out;
+      max-width: 480px;
+      width: 90%;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+      position: relative;
+      z-index: 1;
+      animation: fadeIn 1.2s ease-in-out;
+    }
+
+    .mascot {
+      width: 120px;
+      margin: 0 auto 25px;
+      transition: transform 0.3s ease;
+    }
+    .mascot:hover {
+      transform: rotate(-15deg) scale(1.1);
     }
 
     h1 {
       font-size: 2.5rem;
       margin-bottom: 20px;
       color: #fff;
+      text-shadow: 0 5px 15px rgba(0,0,0,0.3);
     }
 
     p {
-      font-size: 1rem;
+      font-size: 1.1rem;
       margin-bottom: 30px;
       color: #f0f0f0;
     }
@@ -44,44 +76,69 @@
     .btn {
       display: inline-block;
       margin: 10px;
-      padding: 12px 30px;
-      font-weight: 600;
+      padding: 14px 35px;
+      font-weight: 700;
       font-size: 1rem;
       text-decoration: none;
       border-radius: 50px;
-      background: #fff;
-      color: #6C63FF;
+      background: linear-gradient(135deg, #6C63FF, #00BFA6);
+      color: #fff;
       transition: all 0.3s ease;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    }
+    .btn:hover {
+      transform: scale(1.1) rotate(-2deg);
+      box-shadow: 0 12px 25px rgba(0,0,0,0.5);
     }
 
-    .btn:hover {
-      background: #6C63FF;
+    .btn.secondary {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+    }
+    .btn.secondary:hover {
+      background: #00BFA6;
       color: #fff;
       transform: scale(1.05);
     }
 
-    .btn.secondary {
-      background: rgba(255,255,255,0.3);
-      color: #fff;
+    .support {
+      margin-top: 25px;
+      font-size: 0.95rem;
+      color: #f0f0f0;
     }
-
-    .btn.secondary:hover {
-      background: #00BFA6;
-      color: #fff;
+    .support a {
+      color: #6C63FF;
+      font-weight: 600;
+      text-decoration: underline;
     }
 
     @keyframes fadeIn {
       0% { opacity: 0; transform: translateY(-20px); }
       100% { opacity: 1; transform: translateY(0); }
     }
+
+    @media(max-width: 500px){
+      h1 { font-size: 2rem; }
+      p { font-size: 1rem; }
+      .btn { padding: 12px 28px; font-size: 0.95rem; }
+      .mascot { width: 100px; }
+    }
   </style>
 </head>
 <body>
+  <!-- Particles -->
+  <div class="particle"></div>
+  <div class="particle"></div>
+  <div class="particle"></div>
+  <div class="particle"></div>
+
   <div class="container">
+    <img src="https://cdn-icons-png.flaticon.com/512/616/616408.png" alt="Mascot" class="mascot">
     <h1>🚀 Welcome to AutoAffiliate!</h1>
-    <p>Your ultimate platform to automate affiliate links, post, and track results seamlessly.</p>
+    <p>Automate your affiliate workflow, track results, and post like a pro — effortlessly.</p>
     <a href="/login" class="btn">Login</a>
     <a href="/register" class="btn secondary">Register</a>
+    <p class="support">Need help? Contact <a href="mailto:support@slickofficials.com">support@slickofficials.com</a></p>
   </div>
 </body>
 </html>
