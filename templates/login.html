@@ -1,30 +1,125 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Login — {{ company }}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login - AutoAffiliate</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #00BFA6, #6C63FF);
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      color: #fff;
+    }
+
+    .container {
+      background: rgba(255,255,255,0.1);
+      backdrop-filter: blur(12px);
+      padding: 50px 40px;
+      border-radius: 20px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.25);
+      animation: fadeIn 1s ease-in-out;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 30px;
+      color: #fff;
+      text-align: center;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-group {
+      margin-bottom: 20px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 600;
+      color: #f0f0f0;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 15px;
+      border-radius: 10px;
+      border: none;
+      font-size: 1rem;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    input:focus {
+      box-shadow: 0 0 10px rgba(255,255,255,0.6);
+      background: rgba(255,255,255,0.15);
+      color: #fff;
+    }
+
+    button {
+      padding: 12px 0;
+      border-radius: 50px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 600;
+      background: #fff;
+      color: #6C63FF;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    button:hover {
+      background: #6C63FF;
+      color: #fff;
+      transform: scale(1.05);
+    }
+
+    .small-text {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 0.9rem;
+      color: #f0f0f0;
+    }
+
+    .small-text a {
+      color: #fff;
+      font-weight: 600;
+      text-decoration: underline;
+    }
+
+    @keyframes fadeIn {
+      0% { opacity: 0; transform: translateY(-20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+  </style>
 </head>
-<body class="bg-gradient-to-br from-[#071022] to-[#03040a] flex items-center justify-center min-h-screen text-white">
-  <div class="w-full max-w-md p-8 glass rounded-xl">
-    <h2 class="text-2xl font-bold mb-4">Private Login</h2>
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        <div class="mb-4 text-sm text-amber-200">{{ messages[0] }}</div>
-      {% endif %}
-    {% endwith %}
-    <form method="POST" action="/login" class="space-y-4">
-      <div>
-        <label class="text-sm text-slate-300">Email</label>
-        <input name="username" class="w-full p-3 rounded bg-white/5" required />
+<body>
+  <div class="container">
+    <h1>Login</h1>
+    <form action="/login" method="POST">
+      <div class="form-group">
+        <label for="username">Username or Email</label>
+        <input type="text" id="username" name="username" required placeholder="Enter your username or email">
       </div>
-      <div>
-        <label class="text-sm text-slate-300">Password</label>
-        <input type="password" name="password" class="w-full p-3 rounded bg-white/5" required />
+      <div class="form-group">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required placeholder="Enter your password">
       </div>
-      <button class="w-full py-3 rounded bg-cyan-500/90">Login</button>
+      <button type="submit">Login</button>
     </form>
-    <p class="mt-4 text-xs text-slate-400">Contact <a href="mailto:{{ contact_email or 'support@slickofficials.com' }}" class="underline">support</a></p>
+    <p class="small-text">Don't have an account? <a href="/register">Register here</a></p>
   </div>
 </body>
 </html>
