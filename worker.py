@@ -24,25 +24,18 @@ RAKUTEN_CLICKREF = os.getenv("RAKUTEN_CLICKREF","autoaffiliate")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 HEYGEN_API_KEY = os.getenv("HEYGEN_API_KEY")
 
-# Social
-FB_PAGE_ID = os.getenv("FB_PAGE_ID")
-FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
-IG_USER_ID = os.getenv("IG_USER_ID")
-IG_TOKEN = os.getenv("IG_TOKEN") or FB_ACCESS_TOKEN
-TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
+# Social creds
+FB_PAGE_ID = os.getenv("FB_PAGE_ID"); FB_ACCESS_TOKEN = os.getenv("FB_ACCESS_TOKEN")
+IG_USER_ID = os.getenv("IG_USER_ID"); IG_TOKEN = os.getenv("IG_TOKEN") or FB_ACCESS_TOKEN
+TWITTER_API_KEY = os.getenv("TWITTER_API_KEY"); TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
+TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN"); TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 IFTTT_KEY = os.getenv("IFTTT_KEY")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN"); TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 APP_PUBLIC_URL = os.getenv("APP_PUBLIC_URL") or os.getenv("PUBLIC_URL") or ""
 
 # Cadence
 POST_INTERVAL_SECONDS = int(os.getenv("POST_INTERVAL_SECONDS","10800"))
-PULL_INTERVAL_MINUTES = int(os.getenv("PULL_INTERVAL_MINUTES","60"))
 SLEEP_ON_EMPTY = int(os.getenv("SLEEP_ON_EMPTY","300"))
 
 # Pause flags
@@ -53,13 +46,10 @@ DISABLE_TIKTOK = os.getenv("DISABLE_TIKTOK","0")=="1"
 DISABLE_TELEGRAM = os.getenv("DISABLE_TELEGRAM","0")=="1"
 DISABLE_YOUTUBE = os.getenv("DISABLE_YOUTUBE","0")=="1"
 
-ROTATION = [("awin","B"),("rakuten","2"),("awin","C"),("rakuten","1"),("awin","A")]
-
 _worker_running=False; _stop_requested=False
-
-# ---------- DB ----------
 def get_db_conn():
-    conn = psycopg.connect(DATABASE_URL,row_factory=dict_row); return conn, conn.cursor()
+    conn = psycopg.connect(DATABASE_URL,row_factory=dict_row)
+    return conn, conn.cursor()
 
 def ensure_tables():
     conn,cur=get_db_conn()
@@ -70,8 +60,6 @@ def ensure_tables():
     cur.execute("""CREATE TABLE IF NOT EXISTS clicks(
         id SERIAL PRIMARY KEY,post_id INTEGER REFERENCES posts(id) ON DELETE CASCADE,
         ip TEXT,user_agent TEXT,created_at TIMESTAMPTZ DEFAULT now());""")
-    cur.execute("""CREATE TABLE IF NOT EXISTS settings(
-        key TEXT PRIMARY KEY,value TEXT);""")
     conn.commit(); conn.close()
 ensure_tables()
 
@@ -89,24 +77,34 @@ def pull_awin_deeplinks(limit=4):
     out=[]
     if AWIN_API_TOKEN and AWIN_PUBLISHER_ID:
         try:
-            r=requests.get(f"https://api.awin.com/publishers/{AWIN_PUBLISHER_ID}/products?accessToken={AWIN_API_TOKEN}&pageSize={limit}",timeout=12)
+            r=requests.get(
+                f"https://api.awin.com/publishers/{AWIN_PUBLISHER_ID}/products?accessToken={AWIN_API_TOKEN}&pageSize={limit}",
+                timeout=12
+            )
             if r.status_code==200:
                 for item in (r.json().get("products") or [])[:limit]:
                     url=item.get("url") or item.get("clickThroughUrl")
                     if url: out.append(url)
-        except Exception: logger.exception("AWIN API error")
+        except Exception:
+            logger.exception("AWIN API error")
+    # fallback if API didn’t give enough
     if len(out)<limit and AWIN_PUBLISHER_ID:
         for _ in range(limit-len(out)):
             try:
-                r=requests.get(f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid=0&clickref={AWIN_CLICKREF}",allow_redirects=True,timeout=15)
+                r=requests.get(
+                    f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid=0&clickref={AWIN_CLICKREF}",
+                    allow_redirects=True,timeout=15
+                )
                 if r.url.startswith("http"): out.append(r.url)
-            except Exception: logger.exception("AWIN fallback error")
+            except Exception:
+                logger.exception("AWIN fallback error")
     return out[:limit]
 # ---------- Rakuten ----------
 def generate_rakuten_deeplink(mid,dest):
     if not dest: return ""
     site_id=RAKUTEN_SITE_ID; clickref=quote_plus(RAKUTEN_CLICKREF); murl=quote_plus(dest)
-    if mid: return f"https://click.linksynergy.com/deeplink?id={site_id}&mid={mid}&u1={clickref}&murl={murl}"
+    if mid:
+        return f"https://click.linksynergy.com/deeplink?id={site_id}&mid={mid}&u1={clickref}&murl={murl}"
     return f"https://click.linksynergy.com/deeplink?id={site_id}&u1={clickref}&murl={murl}"
 
 def pull_rakuten_deeplinks(limit=4):
@@ -115,7 +113,10 @@ def pull_rakuten_deeplinks(limit=4):
     headers={"Authorization":f"Bearer {token}","Accept":"application/json"}
     for path in ["/linking/v1/offer","/linking/v1/links"]:
         try:
-            r=requests.get(f"https://api.rakutenadvertising.com{path}?siteId={site_id}&pageSize={limit}",headers=headers,timeout=12,verify=False)
+            r=requests.get(
+                f"https://api.rakutenadvertising.com{path}?siteId={site_id}&pageSize={limit}",
+                headers=headers,timeout=12,verify=False
+            )
             if r.status_code==200:
                 items=r.json().get("data") or r.json().get("links") or r.json().get("offers") or []
                 for item in items[:limit]:
@@ -123,35 +124,114 @@ def pull_rakuten_deeplinks(limit=4):
                     mid=item.get("advertiserId") or item.get("mid")
                     dl=generate_rakuten_deeplink(mid,dest)
                     if dl: out.append(dl)
-        except Exception: logger.exception("Rakuten error")
+        except Exception:
+            logger.exception("Rakuten error")
     if len(out)<limit and site_id:
         out.append(f"https://click.linksynergy.com/deeplink?id={site_id}&murl={quote_plus('https://www.rakuten.com')}")
     return out[:limit]
 # ---------- Caption ----------
 def generate_caption_using_openai(url,title=None):
-    if not OPENAI_API_KEY: return f"Hot deal — check this out: {url}"
+    if not OPENAI_API_KEY:
+        return f"Hot deal — check this out: {url}"
     try:
-        payload={"model":"gpt-4o-mini","messages":[
-            {"role":"system","content":"Generate one short caption with emoji and hashtags."},
-            {"role":"user","content":f"{title or ''} {url}"}], "max_tokens":80,"temperature":0.8}
-        r=requests.post("https://api.openai.com/v1/chat/completions",
-                        headers={"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},
-                        json=payload,timeout=12)
+        payload={
+            "model":"gpt-4o-mini",
+            "messages":[
+                {"role":"system","content":"Generate one short caption with emoji and hashtags."},
+                {"role":"user","content":f"{title or ''} {url}"}
+            ],
+            "max_tokens":80,
+            "temperature":0.8
+        }
+        r=requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization":f"Bearer {OPENAI_API_KEY}","Content-Type":"application/json"},
+            json=payload,timeout=12
+        )
         txt=r.json()["choices"][0]["message"]["content"].strip()
         return txt if txt else f"Hot deal — check this out: {url}"
-    except Exception: return f"Hot deal — check this out: {url}"
+    except Exception:
+        logger.exception("OpenAI caption error")
+        return f"Hot deal — check this out: {url}"
 
 # ---------- HeyGen ----------
 def generate_heygen_video(text):
     if not HEYGEN_API_KEY: return None
     try:
-        r=requests.post("https://api.heygen.com/v1/video/generate",
-                        headers={"x-api-key":HEYGEN_API_KEY,"Content-Type":"application/json"},
-                        json={"type":"avatar","script":{"type":"text","input":text},"avatar":"default","voice":{"language":"en-US"}},timeout=30)
-        if r.status_code in (200,201): return r.json().get("video_url")
-    except Exception: logger.exception
+        r=requests.post(
+            "https://api.heygen.com/v1/video/generate",
+            headers={"x-api-key":HEYGEN_API_KEY,"Content-Type":"application/json"},
+            json={
+                "type":"avatar",
+                "script":{"type":"text","input":text},
+                "avatar":"default",
+                "voice":{"language":"en-US"}
+            },
+            timeout=30
+        )
+        if r.status_code in (200,201):
+            return r.json().get("video_url")
+    except Exception:
+        logger.exception("HeyGen error")
+    return None
+# ---------- Social Posting ----------
+def post_fb(caption,url):
+    if DISABLE_FB or not FB_PAGE_ID or not FB_ACCESS_TOKEN: return False
+    try:
+        r=requests.post(
+            f"https://graph.facebook.com/{FB_PAGE_ID}/feed",
+            params={"message":caption,"link":url,"access_token":FB_ACCESS_TOKEN},
+            timeout=12
+        )
+        return r.status_code==200
+    except Exception:
+        logger.exception("FB post error"); return False
 
-    # ---------- Worker loop ----------
+def post_ig(caption,url):
+    if DISABLE_IG or not IG_USER_ID or not IG_TOKEN: return False
+    try:
+        r=requests.post(
+            f"https://graph.facebook.com/{IG_USER_ID}/media",
+            params={"caption":f"{caption} {url}","access_token":IG_TOKEN},
+            timeout=12
+        )
+        return r.status_code==200
+    except Exception:
+        logger.exception("IG post error"); return False
+
+def post_x(caption,url):
+    if DISABLE_X or not TWITTER_API_KEY or not TWITTER_API_SECRET: return False
+    try:
+        auth=tweepy.OAuth1UserHandler(TWITTER_API_KEY,TWITTER_API_SECRET,TWITTER_ACCESS_TOKEN,TWITTER_ACCESS_SECRET)
+        api=tweepy.API(auth)
+        api.update_status(f"{caption} {url}")
+        return True
+    except Exception:
+        logger.exception("X post error"); return False
+def post_ifttt(caption,url):
+    if not IFTTT_KEY: return False
+    try:
+        r=requests.post(
+            f"https://maker.ifttt.com/trigger/autoaffiliate/with/key/{IFTTT_KEY}",
+            json={"value1":caption,"value2":url},
+            timeout=12
+        )
+        return r.status_code==200
+    except Exception:
+        logger.exception("IFTTT post error"); return False
+
+def post_telegram(caption,url):
+    if DISABLE_TELEGRAM or not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID: return False
+    try:
+        r=requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+            json={"chat_id":TELEGRAM_CHAT_ID,"text":f"{caption}\n{url}"},
+            timeout=12
+        )
+        return r.status_code==200
+    except Exception:
+        logger.exception("Telegram post error"); return False
+# ---------- Worker loop ----------
 def post_next_pending():
     conn, cur = get_db_conn()
     cur.execute("SELECT * FROM posts WHERE status='pending' ORDER BY created_at ASC LIMIT 1")
@@ -182,19 +262,15 @@ def post_next_pending():
 
 def refresh_all_sources():
     logger.info("Refreshing affiliate sources (rotation)")
-    for src, tag in ROTATION:
-        if src == "awin":
-            links = pull_awin_deeplinks(1)
-        else:
-            links = pull_rakuten_deeplinks(1)
-        saved = save_links_to_db(links, f"{src}:{tag}")
-        logger.info("Saved %s validated links from %s:%s", saved, src, tag)
+    for src in ["awin","rakuten"]:
+        links = pull_awin_deeplinks(1) if src=="awin" else pull_rakuten_deeplinks(1)
+        saved = save_links_to_db(links, src)
+        logger.info("Saved %s links from %s", saved, src)
     logger.info("REFRESH complete")
 
 def worker_loop():
     global _worker_running, _stop_requested
-    _worker_running = True
-    _stop_requested = False
+    _worker_running = True; _stop_requested = False
     logger.info("Worker starting — cadence: %s seconds", POST_INTERVAL_SECONDS)
     while not _stop_requested:
         try:
@@ -217,6 +293,7 @@ def start_worker_background():
 def stop_worker():
     global _stop_requested
     _stop_requested = True
+
 # ---------- Stats / Health ----------
 def get_stats():
     conn, cur = get_db_conn()
