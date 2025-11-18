@@ -4,9 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login - AutoAffiliate</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: 'Inter', sans-serif;
@@ -16,15 +15,16 @@
       justify-content: center;
       align-items: center;
       color: #fff;
+      overflow: hidden;
     }
 
     .container {
       background: rgba(255,255,255,0.1);
       backdrop-filter: blur(12px);
-      padding: 50px 40px;
+      padding: 50px 35px;
       border-radius: 20px;
       max-width: 400px;
-      width: 100%;
+      width: 90%;
       box-shadow: 0 20px 40px rgba(0,0,0,0.25);
       animation: fadeIn 1s ease-in-out;
     }
@@ -32,19 +32,13 @@
     h1 {
       font-size: 2rem;
       margin-bottom: 30px;
-      color: #fff;
       text-align: center;
+      color: #fff;
     }
 
-    form {
-      display: flex;
-      flex-direction: column;
-    }
+    form { display: flex; flex-direction: column; }
 
-    .form-group {
-      margin-bottom: 20px;
-    }
-
+    .form-group { margin-bottom: 20px; }
     label {
       display: block;
       margin-bottom: 6px;
@@ -60,12 +54,13 @@
       font-size: 1rem;
       outline: none;
       transition: all 0.2s ease;
+      background: rgba(255,255,255,0.2);
+      color: #fff;
     }
 
     input:focus {
-      box-shadow: 0 0 10px rgba(255,255,255,0.6);
-      background: rgba(255,255,255,0.15);
-      color: #fff;
+      box-shadow: 0 0 12px rgba(255,255,255,0.6);
+      background: rgba(255,255,255,0.3);
     }
 
     button {
@@ -78,6 +73,7 @@
       color: #6C63FF;
       cursor: pointer;
       transition: all 0.3s ease;
+      box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
 
     button:hover {
@@ -102,6 +98,11 @@
     @keyframes fadeIn {
       0% { opacity: 0; transform: translateY(-20px); }
       100% { opacity: 1; transform: translateY(0); }
+    }
+
+    @media(max-width: 500px){
+      h1 { font-size: 1.8rem; }
+      input, button { font-size: 0.95rem; padding: 10px; }
     }
   </style>
 </head>
