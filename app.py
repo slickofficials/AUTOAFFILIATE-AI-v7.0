@@ -11,7 +11,7 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 import psycopg
 from psycopg.rows import dict_row
 
-# local worker module (make sure worker.py sits next to app.py)
+# local worker module
 import worker
 
 # ---------- config ----------
@@ -33,7 +33,7 @@ failed_logins = {}
 LOCKOUT_DURATION = timedelta(hours=int(os.getenv("LOCKOUT_HOURS", "24")))
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "10"))
 
-# DB helper (used by admin UI)
+# DB helper
 DB_URL = os.getenv("DATABASE_URL")
 def get_db():
     if not DB_URL:
@@ -64,10 +64,9 @@ def add_security_headers(response):
     response.headers["Cache-Control"] = "no-store, must-revalidate"
     return response
 
-# ---------- simple pages ----------
+# ---------- pages ----------
 @app.route("/")
 def welcome():
-    # if logged in redirect to dashboard
     if current_user and getattr(current_user, "id", None) == ALLOWED_EMAIL:
         return redirect(url_for("dashboard"))
     return render_template("welcome.html", company=COMPANY, title="Welcome")
@@ -95,7 +94,6 @@ def login():
             del failed_logins[client_ip]
         user = User(email); login_user(user)
         logger.info("Login success: %s", email)
-        # start a refresh in background for convenience
         Thread(target=worker.refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
@@ -117,15 +115,12 @@ def logout():
     logger.info("User logged out")
     return redirect(url_for("welcome"))
 
-# ---------- Dashboard (single-page) ----------
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    # read some settings to show on UI
     settings = {}
     try:
         conn, cur = get_db()
-        # settings table might contain keys
         cur.execute("SELECT key, value FROM settings")
         for r in cur.fetchall():
             settings[r["key"]] = r["value"]
@@ -136,15 +131,14 @@ def dashboard():
                            company=COMPANY, title="HQ Dashboard",
                            public_url=APP_PUBLIC_URL, settings=settings)
 
-# ---------- API endpoints for dashboard ----------
+# ---------- API endpoints ----------
 @app.route("/api/stats")
 @login_required
 def api_stats():
     try:
         s = worker.get_stats()
-        # augment with worker status
         s["worker_running"] = getattr(worker, "_worker_running", False)
-        s["post_interval_seconds"] = int(worker.POST_INTERVAL_SECONDS) if getattr(worker, "POST_INTERVAL_SECONDS", None) else int(os.getenv("POST_INTERVAL_SECONDS", "10800"))
+        s["post_interval_seconds"] = int(worker.POST_INTERVAL_SECONDS)
         return jsonify(s)
     except Exception:
         logger.exception("api_stats error")
@@ -159,15 +153,14 @@ def api_control():
         Thread(target=worker.start_worker_background, daemon=True).start()
         return jsonify({"status":"worker_start_requested"}), 202
     if action == "stop":
-        try:
-            worker.stop_worker()
-            return jsonify({"status":"worker_stop_requested"}), 200
-        except Exception as e:
-            logger.exception("stop failed")
-            return jsonify({"error": str(e)}), 500
+        worker.stop_worker()
+        return jsonify({"status":"worker_stop_requested"}), 200
     if action == "refresh":
         Thread(target=worker.refresh_all_sources, daemon=True).start()
         return jsonify({"status":"refresh_queued"}), 202
+    if action == "post_now":
+        Thread(target=worker.post_next_pending, daemon=True).start()
+        return jsonify({"status":"post_queued"}), 202
     return jsonify({"error":"unknown action"}), 400
 
 @app.route("/api/interval", methods=["POST"])
@@ -177,11 +170,10 @@ def api_interval():
     interval = data.get("interval")
     try:
         sec = int(interval)
-        # persist to DB settings
         conn, cur = get_db()
-        cur.execute("INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", ("post_interval_seconds", str(sec)))
+        cur.execute("INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
+                    ("post_interval_seconds", str(sec)))
         conn.commit(); conn.close()
-        # update worker var (worker will pick next time it starts)
         worker.POST_INTERVAL_SECONDS = sec
         return jsonify({"status":"ok","post_interval_seconds":sec}), 200
     except Exception:
@@ -202,54 +194,31 @@ def api_enqueue():
         logger.exception("enqueue failed")
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/logs")
+@app.route("/api/recent_posts")
 @login_required
-def api_logs():
-    # basic tail of postgres logs table if exists OR fallback to reading last worker.log file
-    logs = []
+def api_recent_posts():
     try:
         conn, cur = get_db()
-        cur.execute("SELECT id, message, created_at FROM logs ORDER BY created_at DESC LIMIT 200")
-        rows = cur.fetchall()
+        cur.execute("SELECT id, url, status, posted_at FROM posts ORDER BY created_at DESC LIMIT 20")
+        rows = cur.fetchall(); conn.close()
+        recent = []
         for r in rows:
-            logs.append({"id": r["id"], "message": r["message"], "created_at": r["created_at"].isoformat()})
-        conn.close()
+            recent.append({
+                "id": r["id"], "url": r["url"], "status": r["status"],
+                "posted_at": r["posted_at"].isoformat() if r["posted_at"] else None
+            })
+        return jsonify({"recent_posts": recent})
     except Exception:
-        # if no logs table, return empty — real logging is in stdout (render logs)
-        logger.debug("no logs table or failed to fetch")
-    return jsonify({"logs": logs})
+        logger.exception("recent_posts failed")
+        return jsonify({"recent_posts":[]}), 500
 
-# convenience route for redirect tracking
-@app.route("/r/<int:post_id>")
-def redirect_tracking(post_id):
+@app.route("/export/posts.csv")
+@login_required
+def export_posts_csv():
     try:
         conn, cur = get_db()
-        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
-        row = cur.fetchone()
-        if not row:
-            conn.close()
-            abort(404)
-        real = row["url"]
-        # record click
-        cur.execute("INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)",
-                    (post_id, request.remote_addr or "unknown", request.headers.get("User-Agent",""), datetime.now(timezone.utc)))
-        conn.commit(); conn.close()
-        return redirect(real, code=302)
-    except Exception:
-        logger.exception("redirect error")
-        abort(500)
-
-# health
-@app.route("/health")
-def health():
-    return jsonify({"ok": True, "ts": datetime.now(timezone.utc).isoformat()}), 200
-
-# error handlers
-@app.errorhandler(404)
-def not_found(e):
-    return render_template("welcome.html", company=COMPANY), 404
-
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", 10000))
-    logger.info("Starting app on port %s", port)
-    app.run(host="0.0.0.0", port=port, debug=False)
+        cur.execute("SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY created_at DESC")
+        rows = cur.fetchall(); conn.close()
+        lines = ["id,url,source,status,created_at,posted_at"]
+        for r in rows:
+            lines.append(f"{r['id']},{r['url']},{r['source']},{r['status']},{r['created_at'].isoformat()},{r['posted_at'].isoformat() if r['posted_at']
