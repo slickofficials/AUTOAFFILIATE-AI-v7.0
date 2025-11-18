@@ -11,7 +11,6 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 import psycopg
 from psycopg.rows import dict_row
 
-# local worker module
 import worker
 
 # ---------- config ----------
@@ -75,45 +74,34 @@ def welcome():
 def login():
     if request.method == "GET":
         return render_template("login.html", company=COMPANY, title="Private Login")
-    email = (request.form.get("email") or request.form.get("username") or "").strip().lower()
+    email = (request.form.get("email") or "").strip().lower()
     password = request.form.get("password","")
     if not email or not password:
-        flash("Missing login fields.")
-        return render_template("login.html", company=COMPANY, title="Private Login")
+        flash("Missing login fields."); return render_template("login.html", company=COMPANY)
     client_ip = request.remote_addr or "unknown"
     if client_ip not in failed_logins:
         failed_logins[client_ip] = {"count": 0, "locked_until": None}
     now = datetime.now(timezone.utc)
-    locked_until = failed_logins[client_ip]["locked_until"]
-    if locked_until and locked_until > now:
-        mins = int((locked_until - now).total_seconds() // 60)
-        flash(f"Locked out. Try again in {mins} minutes.")
-        return render_template("login.html", company=COMPANY, title="Private Login")
+    if failed_logins[client_ip]["locked_until"] and failed_logins[client_ip]["locked_until"] > now:
+        flash("Locked out. Try later."); return render_template("login.html", company=COMPANY)
     if email == ALLOWED_EMAIL and password == ADMIN_PASS:
-        if client_ip in failed_logins:
-            del failed_logins[client_ip]
+        failed_logins.pop(client_ip, None)
         user = User(email); login_user(user)
-        logger.info("Login success: %s", email)
         Thread(target=worker.refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
+    failed_logins[client_ip]["count"] += 1
+    if failed_logins[client_ip]["count"] >= MAX_ATTEMPTS:
+        failed_logins[client_ip]["locked_until"] = now + LOCKOUT_DURATION
+        flash("BANNED: 24hr lock.")
     else:
-        failed_logins[client_ip]["count"] += 1
         left = MAX_ATTEMPTS - failed_logins[client_ip]["count"]
-        if failed_logins[client_ip]["count"] >= 3:
-            logger.info("FAILED LOGIN attempt #%s for %s", failed_logins[client_ip]["count"], email)
-        if left <= 0:
-            failed_logins[client_ip]["locked_until"] = now + LOCKOUT_DURATION
-            flash("BANNED: 24hr lock.")
-        else:
-            flash(f"Invalid credentials. {left} attempts left.")
-        return render_template("login.html", company=COMPANY, title="Private Login")
+        flash(f"Invalid credentials. {left} attempts left.")
+    return render_template("login.html", company=COMPANY)
 
 @app.route("/logout")
 @login_required
 def logout():
-    logout_user()
-    logger.info("User logged out")
-    return redirect(url_for("welcome"))
+    logout_user(); return redirect(url_for("welcome"))
 
 @app.route("/dashboard")
 @login_required
@@ -122,113 +110,94 @@ def dashboard():
     try:
         conn, cur = get_db()
         cur.execute("SELECT key, value FROM settings")
-        for r in cur.fetchall():
-            settings[r["key"]] = r["value"]
+        for r in cur.fetchall(): settings[r["key"]] = r["value"]
         conn.close()
-    except Exception:
-        logger.exception("dashboard failed")
-    return render_template("dashboard.html",
-                           company=COMPANY, title="HQ Dashboard",
-                           public_url=APP_PUBLIC_URL, settings=settings)
+    except Exception: logger.exception("dashboard failed")
+    return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL, settings=settings)
 
 # ---------- API endpoints ----------
 @app.route("/api/stats")
 @login_required
 def api_stats():
-    try:
-        s = worker.get_stats()
-        s["worker_running"] = getattr(worker, "_worker_running", False)
-        s["post_interval_seconds"] = int(worker.POST_INTERVAL_SECONDS)
-        return jsonify(s)
-    except Exception:
-        logger.exception("api_stats error")
-        return jsonify({"error":"failed"}), 500
+    s = worker.get_stats()
+    s["worker_running"] = getattr(worker, "_worker_running", False)
+    s["post_interval_seconds"] = int(worker.POST_INTERVAL_SECONDS)
+    return jsonify(s)
 
 @app.route("/api/control", methods=["POST"])
 @login_required
 def api_control():
-    data = request.get_json() or {}
-    action = (data.get("action") or "").lower()
+    action = (request.get_json() or {}).get("action","").lower()
     if action == "start":
-        Thread(target=worker.start_worker_background, daemon=True).start()
-        return jsonify({"status":"worker_start_requested"}), 202
+        Thread(target=worker.start_worker_background, daemon=True).start(); return jsonify({"status":"worker_start_requested"})
     if action == "stop":
-        worker.stop_worker()
-        return jsonify({"status":"worker_stop_requested"}), 200
+        worker.stop_worker(); return jsonify({"status":"worker_stop_requested"})
     if action == "refresh":
-        Thread(target=worker.refresh_all_sources, daemon=True).start()
-        return jsonify({"status":"refresh_queued"}), 202
+        Thread(target=worker.refresh_all_sources, daemon=True).start(); return jsonify({"status":"refresh_queued"})
     if action == "post_now":
-        Thread(target=worker.post_next_pending, daemon=True).start()
-        return jsonify({"status":"post_queued"}), 202
+        Thread(target=worker.post_next_pending, daemon=True).start(); return jsonify({"status":"post_queued"})
     return jsonify({"error":"unknown action"}), 400
 
 @app.route("/api/interval", methods=["POST"])
 @login_required
 def api_interval():
-    data = request.get_json() or {}
-    interval = data.get("interval")
-    try:
-        sec = int(interval)
-        conn, cur = get_db()
-        cur.execute("INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
-                    ("post_interval_seconds", str(sec)))
-        conn.commit(); conn.close()
-        worker.POST_INTERVAL_SECONDS = sec
-        return jsonify({"status":"ok","post_interval_seconds":sec}), 200
-    except Exception:
-        logger.exception("set interval failed")
-        return jsonify({"error":"invalid interval"}), 400
+    sec = int((request.get_json() or {}).get("interval",0))
+    conn, cur = get_db()
+    cur.execute("INSERT INTO settings(key,value) VALUES(%s,%s) ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value", ("post_interval_seconds", str(sec)))
+    conn.commit(); conn.close()
+    worker.POST_INTERVAL_SECONDS = sec
+    return jsonify({"status":"ok","post_interval_seconds":sec})
 
 @app.route("/api/enqueue", methods=["POST"])
 @login_required
 def api_enqueue():
-    data = request.get_json() or {}
-    url = data.get("url")
-    if not url:
-        return jsonify({"error":"url required"}), 400
-    try:
-        res = worker.enqueue_manual_link(url)
-        return jsonify({"enqueued": True, "result": res}), 202
-    except Exception as e:
-        logger.exception("enqueue failed")
-        return jsonify({"error": str(e)}), 500
+    url = (request.get_json() or {}).get("url")
+    if not url: return jsonify({"error":"url required"}), 400
+    res = worker.enqueue_manual_link(url); return jsonify({"enqueued": True, "result": res})
 
 @app.route("/api/recent_posts")
 @login_required
 def api_recent_posts():
-    try:
-        conn, cur = get_db()
-        cur.execute("SELECT id, url, status, posted_at FROM posts ORDER BY created_at DESC LIMIT 20")
-        rows = cur.fetchall(); conn.close()
-        recent = []
-        for r in rows:
-            recent.append({
-                "id": r["id"], "url": r["url"], "status": r["status"],
-                "posted_at": r["posted_at"].isoformat() if r["posted_at"] else None
-            })
-        return jsonify({"recent_posts": recent})
-    except Exception:
-        logger.exception("recent_posts failed")
-        return jsonify({"recent_posts":[]}), 500
+    conn, cur = get_db()
+    cur.execute("SELECT id, url, status, posted_at FROM posts ORDER BY created_at DESC LIMIT 20")
+    rows = cur.fetchall(); conn.close()
+    return jsonify({"recent_posts":[{"id":r["id"],"url":r["url"],"status":r["status"],"posted_at":r["posted_at"].isoformat() if r["posted_at"] else None} for r in rows]})
 
 @app.route("/export/posts.csv")
 @login_required
 def export_posts_csv():
-    try:
-        conn, cur = get_db()
-        cur.execute("SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY created_at DESC")
-        rows = cur.fetchall()
-        conn.close()
-        lines = ["id,url,source,status,created_at,posted_at"]
-        for r in rows:
-            lines.append(
-                f"{r['id']},{r['url']},{r['source']},{r['status']},"
-                f"{r['created_at'].isoformat()},"
-                f"{r['posted_at'].isoformat() if r['posted_at'] else ''}"
-            )
-        csv_data = "\n".join(lines)
-        return csv_data, 200, {"Content-Type": "text/csv"}
-    except Exception:
-        logger.exception("export_posts_csv failed")
-        return "error", 500
+    conn, cur = get_db()
+    cur.execute("SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY created_at DESC")
+    rows = cur.fetchall(); conn.close()
+    lines = ["id,url,source,status,created_at,posted_at"]
+    for r in rows:
+        lines.append(f"{r['id']},{r['url']},{r['source']},{r['status']},{r['created_at'].isoformat()},{r['posted_at'].isoformat() if r['posted_at'] else ''}")
+    return "\n".join(lines), 200, {"Content-Type":"text/csv"}
+
+@app.route("/api/health")
+@login_required
+def api_health(): return jsonify(worker.health_summary())
+
+@app.route("/api/channel", methods=["POST"])
+@login_required
+def api_channel():
+    data = request.get_json() or {}
+    name = (data.get("name") or "").lower(); pause = bool(data.get("pause"))
+    worker.pause_channel(name, pause)
+    return jsonify({"status":"ok","channel":name,"paused":pause})
+
+@app.route("/r/<int:post_id>")
+def redirect_tracking(post_id):
+    conn, cur = get_db()
+    cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
+    row = cur.fetchone()
+    if not row: conn.close(); abort(404)
+    cur.execute("INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)", (post_id, request.remote_addr or "unknown", request.headers.get("User-Agent",""), datetime.now(timezone.utc)))
+    conn.commit(); conn.close()
+    return redirect(row["url"], code=302)
+
+@app.route("/health")
+def health(): return jsonify({"ok": True, "ts": datetime.now(timezone.utc).isoformat()})
+
+@app.errorhandler(404)
+def not_found(e): return render_template("welcome
