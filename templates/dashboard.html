@@ -29,50 +29,27 @@
 
 <div class="container">
   <div class="row g-3 mb-3">
-    <div class="col-md-3">
-      <div class="card p-3 text-center">
-        <div class="muted">Total links</div>
-        <div id="totalLinks" class="h3">0</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="card p-3 text-center">
-        <div class="muted">Pending</div>
-        <div id="pending" class="h3">0</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="card p-3 text-center">
-        <div class="muted">Sent</div>
-        <div id="sent" class="h3">0</div>
-      </div>
-    </div>
-    <div class="col-md-3">
-      <div class="card p-3 text-center">
-        <div class="muted">Clicks</div>
-        <div id="clicks" class="h3">0</div>
-      </div>
-    </div>
+    <div class="col-md-3"><div class="card p-3 text-center"><div class="muted">Total links</div><div id="totalLinks" class="h3">0</div></div></div>
+    <div class="col-md-3"><div class="card p-3 text-center"><div class="muted">Pending</div><div id="pending" class="h3">0</div></div></div>
+    <div class="col-md-3"><div class="card p-3 text-center"><div class="muted">Sent</div><div id="sent" class="h3">0</div></div></div>
+    <div class="col-md-3"><div class="card p-3 text-center"><div class="muted">Clicks</div><div id="clicks" class="h3">0</div></div></div>
   </div>
 
   <div class="row g-3 mb-3">
     <div class="col-md-8">
       <div class="card p-3">
         <h5>Bot Controls</h5>
-        <p class="muted">Start / stop the background worker, trigger manual refresh, enqueue a link, set interval.</p>
         <div class="mb-2">
           <button class="btn btn-success me-2" id="startBot">Start Bot</button>
           <button class="btn btn-danger me-2" id="stopBot">Stop Bot</button>
           <button class="btn btn-primary me-2" id="refreshSources">Refresh Sources</button>
           <span id="workerStatus" class="ms-2 muted small-box">Worker: Unknown</span>
         </div>
-
         <div class="d-flex gap-2 align-items-center my-3">
           <label class="muted me-2">Post interval (sec)</label>
           <input type="number" id="intervalInput" class="form-control" style="width:140px;" />
           <button class="btn btn-outline-light" id="updateInterval">Update</button>
         </div>
-
         <div class="row mt-3">
           <div class="col-md-8">
             <label class="muted">Enqueue manual URL</label>
@@ -82,21 +59,29 @@
             </div>
             <div id="enqueueMsg" class="muted mt-2"></div>
           </div>
-          <div class="col-md-4">
-            <label class="muted">OpenAI caption</label>
-            <select id="aiStyle" class="form-select">
-              <option value="energetic">Energetic</option>
-              <option value="funny">Funny</option>
-              <option value="professional">Professional</option>
-              <option value="viral">Viral</option>
-            </select>
-          </div>
         </div>
       </div>
 
       <div class="card p-3 mt-3">
         <h5>Recent posts</h5>
         <div id="recentList" style="max-height:280px; overflow:auto;"></div>
+      </div>
+
+      <div class="card p-3 mt-3">
+        <h5>Channel Toggles</h5>
+        <div id="channelControls" class="d-flex flex-wrap gap-2">
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('fb')">Toggle FB</button>
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('ig')">Toggle IG</button>
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('x')">Toggle X</button>
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('tiktok')">Toggle TikTok</button>
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('telegram')">Toggle Telegram</button>
+          <button class="btn btn-sm btn-outline-light" onclick="toggleChannel('youtube')">Toggle YouTube</button>
+        </div>
+      </div>
+
+      <div class="card p-3 mt-3">
+        <h5>Health</h5>
+        <pre id="healthSummary" class="code"></pre>
       </div>
     </div>
 
@@ -110,14 +95,12 @@
         <div class="muted small-box">Worker running:</div>
         <div id="workerRunning" class="code">—</div>
       </div>
-
       <div class="card p-3">
         <h6>Quick actions</h6>
-        <button class="btn btn-outline-primary w-100 mb-2" id="postNow">Post Next Pending Now (simulate)</button>
+        <button class="btn btn-outline-primary w-100 mb-2" id="postNow">Post Next Pending Now</button>
         <button class="btn btn-outline-secondary w-100 mb-2" id="downloadCsv">Export posts CSV</button>
       </div>
     </div>
-
   </div>
 </div>
 
@@ -135,7 +118,6 @@ async function loadStats(){
     document.getElementById('workerRunning').textContent = d.worker_running ? 'Yes' : 'No';
     document.getElementById('workerStatus').textContent = 'Worker: ' + (d.worker_running ? 'Running' : 'Stopped');
 
-    // fetch recent posts for UI listing
     const rp = await axios.get('/api/recent_posts').catch(()=>null);
     if(rp && rp.data && rp.data.recent_posts){
       const listEl = document.getElementById('recentList');
@@ -149,62 +131,17 @@ async function loadStats(){
         listEl.appendChild(el);
       });
     }
-  }catch(e){
-    console.error('loadStats', e);
-  }
+    loadHealth();
+  }catch(e){ console.error('loadStats', e); }
+}
+
+async function loadHealth(){
+  try{
+    const res = await axios.get('/api/health');
+    document.getElementById('healthSummary').textContent = JSON.stringify(res.data,null,2);
+  }catch(e){ console.error('loadHealth', e); }
 }
 
 document.getElementById('refreshBtn').addEventListener('click', loadStats);
-document.getElementById('startBot').addEventListener('click', async ()=>{
-  await axios.post('/api/control', { action: 'start' });
-  loadStats();
-});
-document.getElementById('stopBot').addEventListener('click', async ()=>{
-  await axios.post('/api/control', { action: 'stop' });
-  loadStats();
-});
-document.getElementById('refreshSources').addEventListener('click', async ()=>{
-  await axios.post('/api/control', { action: 'refresh' });
-  loadStats();
-});
-document.getElementById('updateInterval').addEventListener('click', async ()=>{
-  const val = document.getElementById('intervalInput').value;
-  await axios.post('/api/interval', { interval: val });
-  alert('Interval updated');
-  loadStats();
-});
-document.getElementById('enqueueBtn').addEventListener('click', async ()=>{
-  const url = document.getElementById('enqueueUrl').value;
-  if(!url){ document.getElementById('enqueueMsg').textContent = 'Enter URL'; return; }
-  const res = await axios.post('/api/enqueue', { url }).catch(e=>{ alert('enqueue failed'); console.error(e); });
-  document.getElementById('enqueueMsg').textContent = res ? 'Enqueued' : 'Failed';
-  document.getElementById('enqueueUrl').value = '';
-  loadStats();
-});
-document.getElementById('postNow').addEventListener('click', async ()=>{
-  // trigger a manual worker refresh then try to post next via /api/control -> refresh then start/stop will run in background
-  await axios.post('/api/control', { action: 'refresh' });
-  alert('Refresh queued; worker will pick pending posts when running.');
-});
-document.getElementById('downloadCsv').addEventListener('click', async ()=>{
-  const r = await axios.get('/export/posts.csv').catch(()=>null);
-  if(r && r.data){
-    const blob = new Blob([r.data], {type:'text/csv'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'posts.csv'; a.click();
-    URL.revokeObjectURL(url);
-  } else alert('Export failed.');
-});
-
-async function init(){
-  loadStats();
-  // fetch defaults for interval input
-  try{
-    const s = await axios.get('/api/stats');
-    document.getElementById('intervalInput').value = s.post_interval_seconds || 10800;
-  }catch(e){}
-}
-init();
-</script>
-</body>
-</html>
+document.getElementById('startBot').addEventListener('click', async ()=>{ await axios.post('/api/control', { action: 'start' }); loadStats(); });
+document.getElementBy
