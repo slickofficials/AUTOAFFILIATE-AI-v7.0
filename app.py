@@ -218,7 +218,17 @@ def export_posts_csv():
     try:
         conn, cur = get_db()
         cur.execute("SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY created_at DESC")
-        rows = cur.fetchall(); conn.close()
+        rows = cur.fetchall()
+        conn.close()
         lines = ["id,url,source,status,created_at,posted_at"]
         for r in rows:
-            lines.append(f"{r['id']},{r['url']},{r['source']},{r['status']},{r['created_at'].isoformat()},{r['posted_at'].isoformat() if r['posted_at']
+            lines.append(
+                f"{r['id']},{r['url']},{r['source']},{r['status']},"
+                f"{r['created_at'].isoformat()},"
+                f"{r['posted_at'].isoformat() if r['posted_at'] else ''}"
+            )
+        csv_data = "\n".join(lines)
+        return csv_data, 200, {"Content-Type": "text/csv"}
+    except Exception:
+        logger.exception("export_posts_csv failed")
+        return "error", 500
