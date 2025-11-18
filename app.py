@@ -78,6 +78,22 @@ def api_stats():
         "clicks_total": clicks,
         "last_posted_at": last.isoformat() if last else None
     })
+@app.route("/")
+def welcome():
+    return render_template("welcome.html")
+
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.form.get("email")
+    password = request.form.get("password")
+    allowed_email = os.getenv("ALLOWED_EMAIL")
+    admin_pass = os.getenv("ADMIN_PASS")
+
+    if email == allowed_email and password == admin_pass:
+        # login success → show dashboard
+        return render_template("dashboard.html")
+    else:
+        return render_template("welcome.html", error="Invalid credentials")
 
 @app.errorhandler(404)
 def not_found(e):
