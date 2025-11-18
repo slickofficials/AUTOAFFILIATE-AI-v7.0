@@ -4,184 +4,144 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AutoAffiliate Dashboard</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 <style>
-  .toast {
-    position: fixed;
-    top: 1rem;
-    right: 1rem;
-    z-index: 1000;
-    padding: 1rem 1.5rem;
-    background: #4a4a4a;
-    color: white;
-    border-radius: 6px;
-    opacity: 0.95;
-    display: none;
-  }
-  .status-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    display: inline-block;
-    margin-left: 8px;
-  }
+    body { font-family: Arial, sans-serif; background: #f2f2f2; margin: 0; padding: 0; }
+    header { background: #222; color: white; padding: 1rem; text-align: center; }
+    .container { max-width: 900px; margin: 2rem auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+    h2 { margin-top: 0; }
+    button { margin: 0.5rem 0; padding: 0.6rem 1rem; border: none; border-radius: 4px; cursor: pointer; }
+    button:hover { opacity: 0.9; }
+    .green { background-color: #4caf50; color: white; }
+    .yellow { background-color: #ff9800; color: white; }
+    .red { background-color: #f44336; color: white; }
+    .stats { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+    .stat-card { flex: 1 1 120px; background: #eee; padding: 1rem; border-radius: 6px; text-align: center; }
+    input[type=text], input[type=number] { width: 100%; padding: 0.5rem; margin-top: 0.2rem; margin-bottom: 0.5rem; border-radius: 4px; border: 1px solid #ccc; }
+    .links { margin-top: 1rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+    th, td { padding: 0.6rem; border: 1px solid #ccc; text-align: left; }
 </style>
 </head>
 <body>
-<section class="section">
-  <div class="container">
-    <h1 class="title has-text-centered">AutoAffiliate Dashboard</h1>
+<header>
+    <h1>AutoAffiliate Dashboard</h1>
+</header>
+<div class="container">
+    <h2>Controls</h2>
+    <button class="green" onclick="startWorker()">Start Worker</button>
+    <button class="red" onclick="stopWorker()">Stop Worker</button>
+    <button class="yellow" onclick="refreshRotation()">Refresh Rotation</button>
 
-    <div class="columns is-vcentered is-multiline">
-      <div class="column is-one-quarter">
-        <div class="box has-text-centered">
-          <p class="heading">Worker Status 
-            <span id="worker-indicator" class="status-indicator"></span>
-          </p>
-          <button id="start-worker" class="button is-success is-fullwidth mb-2">Start Worker</button>
-          <button id="stop-worker" class="button is-danger is-fullwidth">Stop Worker</button>
-        </div>
-      </div>
-      <div class="column is-three-quarters">
-        <div class="box">
-          <h2 class="subtitle">Stats</h2>
-          <div class="columns is-multiline">
-            <div class="column is-one-quarter"><p>Total Posts: <strong id="stat-total">0</strong></p></div>
-            <div class="column is-one-quarter"><p>Pending: <strong id="stat-pending">0</strong></p></div>
-            <div class="column is-one-quarter"><p>Sent: <strong id="stat-sent">0</strong></p></div>
-            <div class="column is-one-quarter"><p>Failed: <strong id="stat-failed">0</strong></p></div>
-            <div class="column is-half"><p>Last Posted At: <strong id="stat-last-posted">N/A</strong></p></div>
-            <div class="column is-half"><p>Total Clicks: <strong id="stat-clicks">0</strong></p></div>
-          </div>
-        </div>
-      </div>
+    <h3>Enqueue Manual Link</h3>
+    <input type="text" id="manualUrl" placeholder="Paste HTTPS affiliate link here">
+    <button class="green" onclick="enqueueLink()">Add Link</button>
+    <p id="enqueueMsg"></p>
+
+    <h3>Settings</h3>
+    <label>Post Cadence (seconds):</label>
+    <input type="number" id="cadenceInput" min="60" value="10800">
+    <button class="yellow" onclick="setCadence()">Update Cadence</button>
+    <p id="cadenceMsg"></p>
+
+    <h2>Stats</h2>
+    <div class="stats">
+        <div class="stat-card">Total Posts<br><span id="statTotal">0</span></div>
+        <div class="stat-card yellow">Pending<br><span id="statPending">0</span></div>
+        <div class="stat-card green">Sent<br><span id="statSent">0</span></div>
+        <div class="stat-card red">Failed<br><span id="statFailed">0</span></div>
+        <div class="stat-card">Clicks<br><span id="statClicks">0</span></div>
+        <div class="stat-card">Last Posted<br><span id="statLast">N/A</span></div>
     </div>
 
-    <div class="columns">
-      <div class="column">
-        <div class="box has-text-centered">
-          <button id="refresh-sources" class="button is-info is-fullwidth">Refresh Affiliate Sources</button>
-        </div>
-      </div>
-      <div class="column">
-        <div class="box has-text-centered">
-          <button id="manual-link-btn" class="button is-primary is-fullwidth">Add Manual Link</button>
-        </div>
-      </div>
+    <div class="links">
+        <h3>Recent Posts</h3>
+        <table>
+            <thead>
+                <tr><th>ID</th><th>URL</th><th>Status</th><th>Created</th></tr>
+            </thead>
+            <tbody id="postTableBody">
+                <!-- Populated dynamically -->
+            </tbody>
+        </table>
     </div>
-  </div>
-</section>
-
-<!-- Manual link modal -->
-<div id="manual-link-modal" class="modal">
-  <div class="modal-background"></div>
-  <div class="modal-card">
-    <header class="modal-card-head">
-      <p class="modal-card-title">Add Manual Link</p>
-      <button class="delete" aria-label="close"></button>
-    </header>
-    <section class="modal-card-body">
-      <div class="field">
-        <label class="label">HTTPS Link</label>
-        <div class="control">
-          <input class="input" type="url" id="manual-link-input" placeholder="https://example.com/affiliate-link">
-        </div>
-      </div>
-    </section>
-    <footer class="modal-card-foot">
-      <button id="manual-link-submit" class="button is-success">Submit</button>
-      <button class="button cancel-btn">Cancel</button>
-    </footer>
-  </div>
 </div>
 
-<div id="toast" class="toast"></div>
-
 <script>
-const toast = document.getElementById('toast');
-
-function showToast(message, duration=3000){
-  toast.textContent = message;
-  toast.style.display = 'block';
-  setTimeout(()=>{ toast.style.display='none'; }, duration);
-}
-
 async function fetchStats() {
-  try {
-    const res = await axios.get('/api/stats');
-    const s = res.data;
-    document.getElementById('stat-total').textContent = s.total;
-    document.getElementById('stat-pending').textContent = s.pending;
-    document.getElementById('stat-sent').textContent = s.sent;
-    document.getElementById('stat-failed').textContent = s.failed;
-    document.getElementById('stat-last-posted').textContent = s.last_posted_at || 'N/A';
-    document.getElementById('stat-clicks').textContent = s.clicks_total;
-
-    // worker indicator
-    const indicator = document.getElementById('worker-indicator');
-    if(s.worker_running) {
-      indicator.style.backgroundColor = 'green';
-    } else {
-      indicator.style.backgroundColor = 'red';
-    }
-  } catch(e){
-    console.error(e);
-    showToast('Failed to fetch stats');
-  }
+    try {
+        const res = await fetch('/api/stats');
+        const data = await res.json();
+        document.getElementById('statTotal').innerText = data.total;
+        document.getElementById('statPending').innerText = data.pending;
+        document.getElementById('statSent').innerText = data.sent;
+        document.getElementById('statFailed').innerText = data.failed;
+        document.getElementById('statClicks').innerText = data.clicks_total;
+        document.getElementById('statLast').innerText = data.last_posted_at || 'N/A';
+        populatePostTable(data.recent_posts || []);
+    } catch(e) { console.error(e); }
 }
 
-async function toggleWorker(start=true){
-  try {
-    const url = start ? '/api/worker/start' : '/api/worker/stop';
-    await axios.post(url);
-    showToast(start ? 'Worker started' : 'Worker stopped');
-    fetchStats();
-  } catch(e){
-    console.error(e);
-    showToast('Worker action failed');
-  }
+function populatePostTable(posts) {
+    const tbody = document.getElementById('postTableBody');
+    tbody.innerHTML = '';
+    posts.forEach(p => {
+        let color = '';
+        if(p.status==='sent') color='green';
+        else if(p.status==='pending') color='yellow';
+        else if(p.status==='failed') color='red';
+        tbody.innerHTML += `<tr>
+            <td>${p.id}</td>
+            <td><a href="${p.url}" target="_blank">${p.url}</a></td>
+            <td class="${color}">${p.status}</td>
+            <td>${new Date(p.created_at).toLocaleString()}</td>
+        </tr>`;
+    });
 }
 
-document.getElementById('start-worker').addEventListener('click', ()=>toggleWorker(true));
-document.getElementById('stop-worker').addEventListener('click', ()=>toggleWorker(false));
-document.getElementById('refresh-sources').addEventListener('click', async ()=>{
-  try{
-    const res = await axios.post('/api/refresh');
-    showToast(`Refreshed ${res.data.saved} links`);
+async function enqueueLink() {
+    const url = document.getElementById('manualUrl').value.trim();
+    const msgEl = document.getElementById('enqueueMsg');
+    if(!url) { msgEl.innerText = 'Enter a valid HTTPS link.'; return; }
+    try {
+        const res = await fetch('/api/enqueue', {
+            method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({url})
+        });
+        const data = await res.json();
+        msgEl.innerText = data.inserted ? `Link added: ${data.url}` : `Failed to add link.`;
+        document.getElementById('manualUrl').value='';
+        fetchStats();
+    } catch(e){ msgEl.innerText = 'Error adding link.'; console.error(e); }
+}
+
+async function refreshRotation() {
+    const res = await fetch('/api/refresh', { method: 'POST' });
+    const data = await res.json();
+    alert(`Rotation refresh complete. Saved ${data.saved} links.`);
     fetchStats();
-  } catch(e){
-    console.error(e);
-    showToast('Refresh failed');
-  }
-});
+}
 
-// manual link modal logic
-const modal = document.getElementById('manual-link-modal');
-document.getElementById('manual-link-btn').addEventListener('click', ()=>modal.classList.add('is-active'));
-modal.querySelector('.delete').addEventListener('click', ()=>modal.classList.remove('is-active'));
-modal.querySelector('.cancel-btn').addEventListener('click', ()=>modal.classList.remove('is-active'));
+async function startWorker() {
+    await fetch('/api/worker/start', { method: 'POST' });
+    alert('Worker started.');
+}
 
-document.getElementById('manual-link-submit').addEventListener('click', async ()=>{
-  const url = document.getElementById('manual-link-input').value;
-  if(!url.startsWith('https://')){
-    return showToast('Link must start with HTTPS');
-  }
-  try{
-    const res = await axios.post('/api/manual-link', {url});
-    showToast(`Added: ${res.data.inserted} link(s)`);
-    modal.classList.remove('is-active');
-    document.getElementById('manual-link-input').value = '';
-    fetchStats();
-  } catch(e){
-    console.error(e);
-    showToast('Failed to add link');
-  }
-});
+async function stopWorker() {
+    await fetch('/api/worker/stop', { method: 'POST' });
+    alert('Worker stop requested.');
+}
 
-// auto-refresh stats every 15s
-setInterval(fetchStats, 15000);
-fetchStats();
+async function setCadence() {
+    const val = parseInt(document.getElementById('cadenceInput').value);
+    const msgEl = document.getElementById('cadenceMsg');
+    if(isNaN(val) || val < 60) { msgEl.innerText='Invalid value'; return; }
+    try {
+        const res = await fetch('/api/settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:'post_interval_seconds', value:val})});
+        msgEl.innerText = 'Cadence updated';
+    } catch(e){ msgEl.innerText='Error updating cadence'; console.error(e);}
+}
+
+setInterval(fetchStats, 5000); // refresh every 5s
+fetchStats(); // initial load
 </script>
 </body>
 </html>
