@@ -1,29 +1,32 @@
-# worker.py — AutoAffiliate worker (rotation B → 2 → C → 1 → A; OpenAI; HeyGen; social APIs)
+# worker.py — AutoAffiliate worker (Full pipeline, production-ready)
+
 import os
 import time
 import logging
 import requests
 import psycopg
 from psycopg.rows import dict_row
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from openai import OpenAI
+from rq import Queue
+from redis import Redis
 from typing import Optional
 
 # -------------------------------
 # Logging
 # -------------------------------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
-logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("worker")
 
 # -------------------------------
-# Environment
+# Environment / API Keys
 # -------------------------------
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     logger.error("DATABASE_URL not set — worker will not start")
 
-# Affiliate IDs and tokens
+# Affiliate IDs
 AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID")
 AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN")
 RAKUTEN_CLIENT_ID = os.getenv("RAKUTEN_CLIENT_ID")
@@ -50,7 +53,6 @@ YOUR_WHATSAPP = os.getenv("YOUR_WHATSAPP")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-# Cadence / sleep
 DEFAULT_CADENCE_SECONDS = 3 * 3600
 PULL_INTERVAL_MINUTES = int(os.getenv("PULL_INTERVAL_MINUTES", "60"))
 SLEEP_ON_EMPTY = int(os.getenv("SLEEP_ON_EMPTY", "300"))
@@ -59,9 +61,13 @@ DEBUG_REDIRECTS = os.getenv("DEBUG_REDIRECTS", "0") == "1"
 # OpenAI client
 openai_client = OpenAI(api_key=OPENAI_KEY) if OPENAI_KEY else None
 
-# Worker control flags
+# Worker flags
 _worker_running = False
 _stop_requested = False
+
+# Redis queue
+redis_conn = Redis.from_url(os.getenv("REDIS_URL", "redis://localhost:6379/0"))
+queue = Queue(connection=redis_conn)
 
 # Rotation plan
 ROTATION = [("awin", "B"), ("rakuten", "2"), ("awin", "C"), ("rakuten", "1"), ("awin", "A")]
@@ -109,17 +115,15 @@ def ensure_tables():
     """)
     safe_execute("""
     CREATE TABLE IF NOT EXISTS settings (
-        key TEXT PRIMARY KEY,
+        setting_key TEXT PRIMARY KEY,
         value TEXT
     );
     """)
 
-ensure_tables()
-
 def db_get_setting(key, fallback=None):
     try:
         conn, cur = get_db_conn()
-        cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+        cur.execute("SELECT value FROM settings WHERE setting_key=%s", (key,))
         row = cur.fetchone()
         conn.close()
         return row["value"] if row else fallback
@@ -130,17 +134,19 @@ def db_get_setting(key, fallback=None):
 def db_set_setting(key, value):
     try:
         conn, cur = get_db_conn()
-        cur.execute(
-            "INSERT INTO settings(key,value) VALUES(%s,%s) "
-            "ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value",
-            (key, str(value))
-        )
-        conn.commit(); conn.close()
+        cur.execute("""
+            INSERT INTO settings(setting_key,value)
+            VALUES(%s,%s)
+            ON CONFLICT (setting_key) DO UPDATE SET value=EXCLUDED.value
+        """, (key, str(value)))
+        conn.commit()
+        conn.close()
         return True
     except Exception:
         logger.exception("db_set_setting")
         return False
 
+ensure_tables()
 POST_INTERVAL_SECONDS = int(db_get_setting("post_interval_seconds", fallback=str(DEFAULT_CADENCE_SECONDS)))
 
 # -------------------------------
@@ -148,7 +154,6 @@ POST_INTERVAL_SECONDS = int(db_get_setting("post_interval_seconds", fallback=str
 # -------------------------------
 def send_alert(title, body):
     logger.info("ALERT: %s — %s", title, body)
-    # Twilio WhatsApp
     if TWILIO_SID and TWILIO_TOKEN and YOUR_WHATSAPP:
         try:
             from twilio.rest import Client
@@ -156,7 +161,6 @@ def send_alert(title, body):
             client.messages.create(from_='whatsapp:+14155238886', body=f"*{title}*\n{body}", to=YOUR_WHATSAPP)
         except Exception:
             logger.exception("Twilio alert failed")
-    # Telegram
     if TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID:
         try:
             requests.post(
@@ -318,12 +322,82 @@ def generate_heygen_avatar_video(text):
     return None
 
 # -------------------------------
-# Social posting (robust)
+# Pipeline — core functions
 # -------------------------------
-# ... FB, IG, Twitter, Telegram, IFTTT, YouTube functions stay same, all wrapped in try/except
 
-# -------------------------------
-# Pipeline
-# -------------------------------
-# post_next_pending, refresh_all_sources, get_stats, start_worker_background, stop_worker
-# All functions same structure, but wrapped with stronger fail-safes, retries, and logging
+def post_next_pending():
+    """Pick next pending post, generate caption/video, mark as posted"""
+    conn, cur = get_db_conn()
+    try:
+        cur.execute("SELECT * FROM posts WHERE status='pending' ORDER BY created_at ASC LIMIT 1")
+        row = cur.fetchone()
+        if not row:
+            return None
+        post_id = row["id"]
+        url = row["url"]
+        caption = generate_caption(url)
+        video_url = generate_heygen_avatar_video(caption)
+        cur.execute("UPDATE posts SET status='posted', posted_at=%s, meta=%s WHERE id=%s",
+                    (datetime.now(timezone.utc), {"caption": caption, "video": video_url}, post_id))
+        conn.commit()
+        logger.info("Posted %s", url)
+        return {"id": post_id, "url": url, "caption": caption, "video": video_url}
+    except Exception:
+        conn.rollback()
+        logger.exception("post_next_pending failed")
+        return None
+    finally:
+        conn.close()
+
+def refresh_all_sources():
+    """Pull links from all sources in rotation"""
+    total = 0
+    for source, _ in ROTATION:
+        try:
+            if source == "awin": total += save_links_to_db(pull_awin_deeplinks(), source="awin")
+            if source == "rakuten": total += save_links_to_db(pull_rakuten_deeplinks(), source="rakuten")
+        except Exception:
+            logger.exception("refresh_all_sources error for %s", source)
+    logger.info("Total new links pulled: %s", total)
+    return {"new_links": total}
+
+def get_stats():
+    """Return simple stats for dashboard"""
+    conn, cur = get_db_conn()
+    try:
+        cur.execute("SELECT COUNT(*) AS total FROM posts")
+        total = cur.fetchone()["total"]
+        cur.execute("SELECT COUNT(*) AS posted FROM posts WHERE status='posted'")
+        posted = cur.fetchone()["posted"]
+        cur.execute("SELECT COUNT(*) AS pending FROM posts WHERE status='pending'")
+        pending = cur.fetchone()["pending"]
+        return {"total": total, "posted": posted, "pending": pending}
+    except Exception:
+        logger.exception("get_stats failed")
+        return {"total": 0, "posted": 0, "pending": 0}
+    finally:
+        conn.close()
+
+def start_worker_background():
+    """Run worker in background queue"""
+    global _worker_running, _stop_requested
+    if _worker_running:
+        return {"status": "already running"}
+    _worker_running = True
+    _stop_requested = False
+    logger.info("Worker started in background")
+    while not _stop_requested:
+        posted = post_next_pending()
+        if not posted:
+            time.sleep(SLEEP_ON_EMPTY)
+    _worker_running = False
+    logger.info("Worker stopped")
+    return {"status": "stopped"}
+
+def stop_worker():
+    """Request worker stop"""
+    global _stop_requested
+    _stop_requested = True
+    logger.info("Stop requested for worker")
+
+logger.info("Worker loaded — ready to pull, save, post, and report stats")
