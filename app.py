@@ -88,14 +88,27 @@ class Setting(db.Model):
     key = db.Column(db.Text, primary_key=True)
     value = db.Column(db.Text)
 
-# create tables if not present (safe in startup)
+# -------------------------
+# Sanity check / ensure tables + columns
+# -------------------------
 with app.app_context():
     try:
-        db.create_all()
-        logger.info("DB tables ensured")
-    except Exception:
-        logger.exception("db.create_all failed")
+        # Ensure the 'settings' table exists
+        with db.engine.connect() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+            """)
+        logger.info("Sanity check: 'settings' table ensured")
 
+        # Optional: confirm other tables exist (posts, clicks)
+        db.create_all()
+        logger.info("Sanity check: other tables ensured via SQLAlchemy")
+    except Exception:
+        logger.exception("Sanity check failed")
+        
 # -------------------------
 # Redis / RQ (for dashboard queueing)
 # -------------------------
