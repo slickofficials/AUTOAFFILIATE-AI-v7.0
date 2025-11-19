@@ -37,6 +37,6 @@ facebook-business
 instabot
 urllib3>=2.2.0
 certifi>=2024.07.04
-
+psycopg2-binary==2.9.8   # add this
 
 
