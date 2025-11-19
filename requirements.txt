@@ -9,7 +9,7 @@ APScheduler==3.10.4
 psycopg[binary]==3.2.3
 redis==5.0.1
 rq==1.15.1
-psycopg2-binary==2.9.9
+
 
 # === SECURITY & AUTH ===
 bcrypt==4.1.2
