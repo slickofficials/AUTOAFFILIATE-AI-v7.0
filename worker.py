@@ -153,7 +153,7 @@ def db_get_setting(k: str, fallback=None):
     try:
         conn, cur = get_db_conn()
         # Try both `key` and `setting_key` to be robust
-        cur.execute("SELECT value FROM settings WHERE key=%s OR setting_key=%s LIMIT 1", (k, k))
+       cur.execute("SELECT value FROM settings WHERE key=%s LIMIT 1", (k,))
         r = cur.fetchone()
         conn.close()
         return r["value"] if r else fallback
