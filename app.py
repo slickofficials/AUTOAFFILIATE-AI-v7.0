@@ -64,7 +64,9 @@ app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)  # optional migration support
 
+# -------------------------
 # Models
+# -------------------------
 class Post(db.Model):
     __tablename__ = "posts"
     id = db.Column(db.Integer, primary_key=True)
@@ -89,26 +91,27 @@ class Setting(db.Model):
     value = db.Column(db.Text)
 
 # -------------------------
-# Sanity check / ensure tables + columns
+# Ensure tables exist
 # -------------------------
 with app.app_context():
     try:
-        # Ensure the 'settings' table exists
+        # Ensure SQLAlchemy-managed tables
+        db.create_all()
+        logger.info("DB tables ensured via SQLAlchemy")
+
+        # Ensure 'settings' table exists at raw SQL level (Postgres-safe)
         with db.engine.connect() as conn:
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                );
+            CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            );
             """)
-        logger.info("Sanity check: 'settings' table ensured")
-
-        # Optional: confirm other tables exist (posts, clicks)
-        db.create_all()
-        logger.info("Sanity check: other tables ensured via SQLAlchemy")
+            conn.commit()
+        logger.info("'settings' table ensured at raw SQL level")
     except Exception:
-        logger.exception("Sanity check failed")
-        
+        logger.exception("db.create_all / settings table creation failed")
+
 # -------------------------
 # Redis / RQ (for dashboard queueing)
 # -------------------------
@@ -153,7 +156,7 @@ def load_user(user_id):
 # -------------------------
 def db_get_setting(key, fallback=None):
     try:
-        s = Setting.query.get(key)
+        s = Setting.query.filter_by(key=key).first()
         return s.value if s else fallback
     except Exception:
         logger.exception("db_get_setting")
@@ -161,7 +164,7 @@ def db_get_setting(key, fallback=None):
 
 def db_set_setting(key, value):
     try:
-        s = Setting.query.get(key)
+        s = Setting.query.filter_by(key=key).first()
         if not s:
             s = Setting(key=key, value=str(value))
             db.session.add(s)
@@ -174,7 +177,9 @@ def db_set_setting(key, value):
         logger.exception("db_set_setting")
         return False
 
+# -------------------------
 # ensure default post interval
+# -------------------------
 try:
     if not db_get_setting("post_interval_seconds"):
         db_set_setting("post_interval_seconds", str(3 * 3600))
@@ -207,7 +212,6 @@ def robots():
 # -------------------------
 @app.route("/")
 def welcome():
-    # if logged in go to dashboard
     try:
         if current_user.is_authenticated:
             return redirect(url_for("dashboard"))
@@ -220,7 +224,6 @@ def login():
     if request.method == "GET":
         return render_template("login.html", company=COMPANY, title="Private Login")
 
-    # optional IP allowlist
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
     if ALLOWED_IP and client_ip != ALLOWED_IP:
         flash("Access restricted.")
@@ -233,7 +236,6 @@ def login():
         flash("Missing login fields.")
         return render_template("login.html", company=COMPANY, title="Private Login")
 
-    # simple brute force tracking per IP
     if client_ip not in failed_logins:
         failed_logins[client_ip] = {"count": 0, "locked_until": None}
     now = datetime.now(timezone.utc)
@@ -244,12 +246,10 @@ def login():
         return render_template("login.html", company=COMPANY, title="Private Login")
 
     if username == ADMIN_USER and password == ADMIN_PASS:
-        # success
         failed_logins[client_ip]["count"] = 0
         user = AdminUser(ADMIN_USER)
         login_user(user)
         logger.info("Login success: %s (ip=%s)", username, client_ip)
-        # start a refresh thread (non-blocking)
         Thread(target=worker.refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
@@ -302,10 +302,8 @@ def redirect_tracking(post_id):
 @login_required
 def api_stats():
     try:
-        # prefer worker.get_stats if available
         if hasattr(worker, "get_stats"):
             return jsonify(worker.get_stats())
-        # fallback derive from DB:
         total = Post.query.count()
         pending = Post.query.filter_by(status="pending").count()
         sent = Post.query.filter_by(status="sent").count() if hasattr(Post, "status") else 0
@@ -332,12 +330,10 @@ def enqueue_route():
     if not url:
         return jsonify({"error": "url required"}), 400
     try:
-        # call worker enqueue function (should return summary)
         if hasattr(worker, "enqueue_manual_link"):
             result = worker.enqueue_manual_link(url)
             return jsonify({"enqueued": True, "result": result}), 202
         else:
-            # fallback: insert into DB directly
             p = Post(url=url, source=source, status="pending", created_at=datetime.now(timezone.utc))
             db.session.add(p)
             db.session.commit()
@@ -350,7 +346,6 @@ def enqueue_route():
 @login_required
 def refresh_route():
     try:
-        # trigger in background
         if hasattr(worker, "refresh_all_sources"):
             Thread(target=worker.refresh_all_sources, daemon=True).start()
             return jsonify({"status": "refresh_queued"}), 202
