@@ -1,54 +1,64 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AutoAffiliate Dashboard</title>
-    <!-- GZIP / minified CSS for production -->
-    <link rel="stylesheet" href="/static/dashboard.css">
-    <style>
-        /* Minimal inline styles fallback */
-        body { font-family: Arial, sans-serif; background: #f4f4f9; margin: 0; padding: 0; }
-        header { background: #1a1a2e; color: #fff; padding: 1rem; text-align: center; }
-        main { max-width: 900px; margin: 2rem auto; padding: 1rem; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-        button { margin: 0.5rem 0; padding: 0.5rem 1rem; cursor: pointer; border: none; border-radius: 4px; background: #4ecca3; color: #fff; font-weight: bold; transition: 0.2s; }
-        button:hover { background: #3fa68c; }
-        input { padding: 0.5rem; margin-right: 0.5rem; width: 70%; }
-        #stats { margin-top: 1rem; padding: 1rem; background: #e3e3f1; border-radius: 6px; }
-        .section { margin-bottom: 2rem; }
-    </style>
+  <meta charset="UTF-8">
+  <title>{{ company }} Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
 </head>
 <body>
-    <header>
-        <h1>AutoAffiliate Dashboard</h1>
-        <p>Welcome, {{ current_user.username }}</p>
-        <a href="{{ url_for('logout') }}" style="color:#ff4e4e; text-decoration:none;">Logout</a>
-    </header>
-    <main>
-        <!-- Stats Section -->
-        <div class="section" id="stats">
-            <p>Loading stats...</p>
-        </div>
+  <!-- Top bar -->
+  <header class="topbar glass">
+    <h1>{{ company }}</h1>
+    <div id="stats" class="stats"></div>
+    <div class="clock">{{ datetime.utcnow().strftime("%H:%M UTC") }}</div>
+  </header>
 
-        <!-- Worker Control -->
-        <div class="section">
-            <h2>Worker Controls</h2>
-            <button id="refresh-btn">Refresh Sources</button>
-            <button id="start-worker-btn">Start Worker</button>
-            <button id="stop-worker-btn">Stop Worker</button>
-        </div>
+  <!-- Control Center -->
+  <section class="controls glass">
+    <h2>Control Center</h2>
+    <div class="buttons">
+      <button id="refresh-btn" class="btn">🔄 Refresh Sources</button>
+      <button id="start-worker-btn" class="btn">▶️ Start Worker</button>
+      <button id="stop-worker-btn" class="btn">⏹ Stop Worker</button>
+    </div>
+    <form id="enqueue-form" class="enqueue">
+      <input id="enqueue-url" type="url" placeholder="Paste affiliate link…" required>
+      <button id="enqueue-btn" type="submit" class="btn">➕ Enqueue Link</button>
+    </form>
+    <div class="interval">
+      <label for="interval-input">Set Interval (minutes):</label>
+      <input id="interval-input" type="number" min="1" step="1">
+      <button id="interval-btn" class="btn">⏱ Update Interval</button>
+    </div>
+  </section>
 
-        <!-- Manual URL Enqueue -->
-        <div class="section">
-            <h2>Add Affiliate URL</h2>
-            <form id="enqueue-form">
-                <input type="text" id="enqueue-url" placeholder="https://affiliate-link.com/..." required>
-                <button type="submit" id="enqueue-btn">Add URL</button>
-            </form>
-        </div>
-    </main>
+  <!-- Activity Feed -->
+  <section class="activity glass">
+    <h2>Recent Activity</h2>
+    <ul id="activity-feed">
+      <!-- JS will populate with recent posts -->
+    </ul>
+  </section>
 
-    <!-- Dashboard JS -->
-    <script src="/static/dashboard.js"></script>
+  <!-- System Health -->
+  <section class="health glass">
+    <h2>System Health</h2>
+    <p>Worker: <span id="worker-status">Unknown</span></p>
+    <p>Redis Queue: Connected ✅</p>
+    <p>Next Refresh: <span id="next-refresh">--</span></p>
+  </section>
+
+  <!-- Toast notifications -->
+  <div id="toast"></div>
+
+  <!-- Charts -->
+  <section class="charts glass">
+    <h2>Performance</h2>
+    <canvas id="clickChart"></canvas>
+    <canvas id="sourceChart"></canvas>
+  </section>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
 </body>
 </html>
