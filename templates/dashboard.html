@@ -35,9 +35,7 @@
   <!-- Activity Feed -->
   <section class="activity glass">
     <h2>Recent Activity</h2>
-    <ul id="activity-feed">
-      <!-- JS will populate with recent posts -->
-    </ul>
+    <ul id="activity-feed"></ul>
   </section>
 
   <!-- System Health -->
@@ -57,6 +55,14 @@
     <canvas id="clickChart"></canvas>
     <canvas id="sourceChart"></canvas>
   </section>
+
+  <!-- Floating Control Dock -->
+  <div class="control-dock glass">
+    <button id="refresh-btn" class="btn">🔄</button>
+    <button id="start-worker-btn" class="btn">▶️</button>
+    <button id="stop-worker-btn" class="btn">⏹</button>
+    <button id="enqueue-btn" class="btn">➕</button>
+  </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
