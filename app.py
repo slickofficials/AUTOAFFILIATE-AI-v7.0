@@ -1,4 +1,4 @@
-# app.py — AutoAffiliate HQ (Flask + Dashboard) — production-ready
+# app.py — AutoAffiliate HQ Dashboard
 import os
 import logging
 from datetime import datetime, timezone, timedelta
@@ -16,53 +16,43 @@ from redis import Redis
 from rq import Queue
 from apscheduler.schedulers.background import BackgroundScheduler
 
-# Worker import points (your worker.py must expose these)
-# - refresh_all_sources()
-# - enqueue_manual_link(url)
-# - start_worker_background()
-# - stop_worker()
-# - get_stats()
+# Worker import points
 import worker
 
-# -------------------------
 # Logging
-# -------------------------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("app")
 
-# -------------------------
 # Flask
-# -------------------------
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.secret_key = os.getenv("SECRET_KEY", "slickofficials_hq_2025")
 Compress(app)
-
-# -------------------------
-# App config
-# -------------------------
+# Config
 COMPANY = os.getenv("COMPANY_NAME", "SlickOfficials HQ | Amson Multi Global LTD")
 CONTACT_EMAIL = os.getenv("CONTACT_EMAIL", "support@slickofficials.com")
 APP_PUBLIC_URL = os.getenv("PUBLIC_URL") or os.getenv("APP_PUBLIC_URL") or ""
 
-# Auth config (single admin user)
 ADMIN_USER = os.getenv("ADMIN_USER", os.getenv("ALLOWED_EMAIL", "admin@example.com"))
 ADMIN_PASS = os.getenv("ADMIN_PASS", "12345")
 ALLOWED_IP = os.getenv("ALLOWED_IP", "").strip()
 
-# Lockout config (simple)
 failed_logins = {}
 LOCKOUT_DURATION = timedelta(hours=int(os.getenv("LOCKOUT_HOURS", "24")))
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS", "10"))
 
-# -------------------------
-# DB (SQLAlchemy)
-# -------------------------
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost/autofiliate")
-app.config["SQLALCHEMY_DATABASE_URI"] = DATABASE_URL
+# Database (SQLAlchemy with psycopg3 driver)
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required")
+db_uri = DATABASE_URL.replace("postgres://", "postgresql+psycopg://")
+if db_uri.startswith("postgresql://"):
+    db_uri = db_uri.replace("postgresql://", "postgresql+psycopg://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = db_uri
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
-migrate = Migrate(app, db)  # optional migration support
+migrate = Migrate(app, db)
 
 # Models
 class Post(db.Model):
@@ -85,54 +75,36 @@ class Click(db.Model):
 
 class Setting(db.Model):
     __tablename__ = "settings"
-    key = db.Column(db.Text, primary_key=True)
+    setting_key = db.Column(db.Text, primary_key=True)
     value = db.Column(db.Text)
 
-# -------------------------
-# Sanity check / ensure tables + columns
-# -------------------------
-with app.app_context():
-    try:
-        # Ensure the 'settings' table exists
-        with db.engine.connect() as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS settings (
-                    key TEXT PRIMARY KEY,
-                    value TEXT
-                );
-            """)
-        logger.info("Sanity check: 'settings' table ensured")
-
-        # Optional: confirm other tables exist (posts, clicks)
-        db.create_all()
-        logger.info("Sanity check: other tables ensured via SQLAlchemy")
-    except Exception:
-        logger.exception("Sanity check failed")
-        
-# -------------------------
-# Redis / RQ (for dashboard queueing)
-# -------------------------
+class FailedLink(db.Model):
+    __tablename__ = "failed_links"
+    id = db.Column(db.Integer, primary_key=True)
+    source = db.Column(db.String(50), nullable=False)
+    attempted_url = db.Column(db.Text, nullable=False)
+    reason = db.Column(db.Text)
+    created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+# Redis / RQ
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-redis_conn = Redis.from_url(REDIS_URL)
-rq_queue = Queue(connection=redis_conn)
+try:
+    redis_conn = Redis.from_url(REDIS_URL)
+    rq_queue = Queue("autoaffiliate", connection=redis_conn)
+except Exception:
+    redis_conn, rq_queue = None, None
+    logger.warning("Redis not available")
 
-# -------------------------
-# Scheduler (optional refresh cadence)
-# -------------------------
+# Scheduler
 scheduler = BackgroundScheduler()
 scheduler.start()
 PULL_INTERVAL_MINUTES = int(os.getenv("PULL_INTERVAL_MINUTES", "60"))
-
-# schedule periodic refresh only if worker provides function
 try:
     scheduler.add_job(worker.refresh_all_sources, "interval", minutes=PULL_INTERVAL_MINUTES, id="refresh_sources")
     logger.info("Scheduled refresh_all_sources every %s minutes", PULL_INTERVAL_MINUTES)
 except Exception:
-    logger.exception("scheduler add_job failed (maybe refresh_all_sources missing)")
+    logger.exception("scheduler add_job failed")
 
-# -------------------------
 # Login manager
-# -------------------------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
@@ -147,10 +119,7 @@ def load_user(user_id):
     if user_id == ADMIN_USER:
         return AdminUser(user_id)
     return None
-
-# -------------------------
-# Settings helpers (SQLAlchemy)
-# -------------------------
+# Settings helpers
 def db_get_setting(key, fallback=None):
     try:
         s = Setting.query.get(key)
@@ -163,7 +132,7 @@ def db_set_setting(key, value):
     try:
         s = Setting.query.get(key)
         if not s:
-            s = Setting(key=key, value=str(value))
+            s = Setting(setting_key=key, value=str(value))
             db.session.add(s)
         else:
             s.value = str(value)
@@ -174,16 +143,7 @@ def db_set_setting(key, value):
         logger.exception("db_set_setting")
         return False
 
-# ensure default post interval
-try:
-    if not db_get_setting("post_interval_seconds"):
-        db_set_setting("post_interval_seconds", str(3 * 3600))
-except Exception:
-    logger.exception("init post_interval")
-
-# -------------------------
 # Security headers
-# -------------------------
 @app.after_request
 def add_security_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
@@ -191,9 +151,7 @@ def add_security_headers(response):
     response.headers["Cache-Control"] = "no-store, must-revalidate"
     return response
 
-# -------------------------
 # Static helpers
-# -------------------------
 @app.route("/sitemap.xml")
 def sitemap():
     return send_from_directory(".", "sitemap.xml")
@@ -201,26 +159,12 @@ def sitemap():
 @app.route("/robots.txt")
 def robots():
     return send_from_directory(".", "robots.txt")
-
-# -------------------------
-# Pages
-# -------------------------
-@app.route("/")
-def welcome():
-    # if logged in go to dashboard
-    try:
-        if current_user.is_authenticated:
-            return redirect(url_for("dashboard"))
-    except Exception:
-        pass
-    return render_template("welcome.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Welcome")
-
+# Auth routes
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "GET":
         return render_template("login.html", company=COMPANY, title="Private Login")
 
-    # optional IP allowlist
     client_ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
     if ALLOWED_IP and client_ip != ALLOWED_IP:
         flash("Access restricted.")
@@ -229,99 +173,97 @@ def login():
     username = (request.form.get("username") or request.form.get("email") or "").strip()
     password = request.form.get("password", "")
 
-    if not username or not password:
-        flash("Missing login fields.")
-        return render_template("login.html", company=COMPANY, title="Private Login")
-
-    # simple brute force tracking per IP
-    if client_ip not in failed_logins:
-        failed_logins[client_ip] = {"count": 0, "locked_until": None}
-    now = datetime.now(timezone.utc)
-    locked_until = failed_logins[client_ip]["locked_until"]
-    if locked_until and locked_until > now:
-        mins = int((locked_until - now).total_seconds() // 60)
-        flash(f"Locked out. Try again in {mins} minutes.")
-        return render_template("login.html", company=COMPANY, title="Private Login")
-
     if username == ADMIN_USER and password == ADMIN_PASS:
-        # success
-        failed_logins[client_ip]["count"] = 0
         user = AdminUser(ADMIN_USER)
         login_user(user)
-        logger.info("Login success: %s (ip=%s)", username, client_ip)
-        # start a refresh thread (non-blocking)
         Thread(target=worker.refresh_all_sources, daemon=True).start()
         return redirect(url_for("dashboard"))
     else:
-        failed_logins[client_ip]["count"] += 1
-        left = MAX_ATTEMPTS - failed_logins[client_ip]["count"]
-        if failed_logins[client_ip]["count"] >= 3:
-            logger.warning("FAILED LOGIN attempt #%s for %s from %s", failed_logins[client_ip]["count"], username, client_ip)
-        if left <= 0:
-            failed_logins[client_ip]["locked_until"] = now + LOCKOUT_DURATION
-            flash("Too many failed attempts. Locked out.")
-        else:
-            flash(f"Invalid credentials. {left} attempts left.")
+        flash("Invalid credentials.")
         return render_template("login.html", company=COMPANY, title="Private Login")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("welcome"))
+
+@app.route("/")
+def welcome():
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    return render_template("welcome.html", company=COMPANY, contact_email=CONTACT_EMAIL, title="Welcome")
 
 @app.route("/dashboard")
 @login_required
 def dashboard():
     return render_template("dashboard.html", company=COMPANY, title="HQ Dashboard", public_url=APP_PUBLIC_URL, contact_email=CONTACT_EMAIL)
 
-@app.route("/logout")
-@login_required
-def logout():
-    logout_user()
-    logger.info("User logged out")
-    return redirect(url_for("welcome"))
-
-# -------------------------
 # Redirect tracking
-# -------------------------
 @app.route("/r/<int:post_id>")
 def redirect_tracking(post_id):
-    try:
-        post = Post.query.get(post_id)
-        if not post:
-            abort(404)
-        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
-        ua = request.headers.get("User-Agent", "")
-        click = Click(post_id=post_id, ip=ip, user_agent=ua, created_at=datetime.now(timezone.utc))
-        db.session.add(click)
-        db.session.commit()
-        return redirect(post.url, code=302)
-    except Exception:
-        logger.exception("redirect_tracking failed for %s", post_id)
-        abort(500)
+    post = Post.query.get(post_id)
+    if not post:
+        abort(404)
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown")
+    ua = request.headers.get("User-Agent", "")
+    click = Click(post_id=post_id, ip=ip, user_agent=ua, created_at=datetime.now(timezone.utc))
+    db.session.add(click)
+    db.session.commit()
+    return redirect(post.url, code=302)
 
-# -------------------------
-# API / Admin actions
-# -------------------------
+# API routes
 @app.route("/api/stats")
 @login_required
 def api_stats():
     try:
-        # prefer worker.get_stats if available
         if hasattr(worker, "get_stats"):
             return jsonify(worker.get_stats())
-        # fallback derive from DB:
         total = Post.query.count()
         pending = Post.query.filter_by(status="pending").count()
-        sent = Post.query.filter_by(status="sent").count() if hasattr(Post, "status") else 0
+        posted = Post.query.filter_by(status="posted").count()
         clicks = Click.query.count()
         last_posted = Post.query.filter(Post.posted_at.isnot(None)).order_by(Post.posted_at.desc()).first()
-        last_ts = last_posted.posted_at.astimezone(timezone.utc).isoformat() if last_posted and last_posted.posted_at else None
-        return jsonify({
-            "total_links": total,
-            "pending": pending,
-            "sent": sent,
-            "clicks_total": clicks,
-            "last_posted_at": last_ts
-        })
+        last_ts = last_posted.posted_at.isoformat() if last_posted else None
+        return jsonify({"total_links": total, "pending": pending, "posted": posted, "clicks_total": clicks
+                })
     except Exception:
         logger.exception("api_stats failed")
         return jsonify({}), 500
+
+@app.route("/api/posts")
+@login_required
+def api_posts():
+    rows = db.session.execute(
+        db.text("SELECT id, url, source, status, created_at, posted_at FROM posts ORDER BY id DESC LIMIT 200")
+    ).mappings().all()
+    return jsonify([dict(r) for r in rows])
+
+@app.route("/api/failed_summary")
+@login_required
+def api_failed_summary():
+    since = datetime.now(timezone.utc) - timedelta(days=1)
+    rows = db.session.execute(
+        db.text("SELECT source, COUNT(*) AS count FROM failed_links WHERE created_at >= :since GROUP BY source"),
+        {"since": since}
+    ).mappings().all()
+    summary = {r["source"]: r["count"] for r in rows}
+    for src in ("awin", "rakuten", "facebook", "twitter", "telegram", "ifttt"):
+        summary.setdefault(src, 0)
+    return jsonify({"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "sources": summary})
+
+@app.route("/api/worker/status")
+@login_required
+def api_worker_status():
+    try:
+        if hasattr(worker, "get_stats"):
+            stats = worker.get_stats()
+            running = stats.get("pending", 0) > 0 or stats.get("posted", 0) > 0
+            return jsonify({"running": running})
+        return jsonify({"running": False})
+    except Exception:
+        logger.exception("api_worker_status failed")
+        return jsonify({"running": False}), 500
 
 @app.route("/enqueue", methods=["POST"])
 @login_required
@@ -332,25 +274,21 @@ def enqueue_route():
     if not url:
         return jsonify({"error": "url required"}), 400
     try:
-        # call worker enqueue function (should return summary)
         if hasattr(worker, "enqueue_manual_link"):
             result = worker.enqueue_manual_link(url)
             return jsonify({"enqueued": True, "result": result}), 202
-        else:
-            # fallback: insert into DB directly
-            p = Post(url=url, source=source, status="pending", created_at=datetime.now(timezone.utc))
-            db.session.add(p)
-            db.session.commit()
-            return jsonify({"enqueued": True, "id": p.id}), 202
+        p = Post(url=url, source=source, status="pending", created_at=datetime.now(timezone.utc))
+        db.session.add(p)
+        db.session.commit()
+        return jsonify({"enqueued": True, "id": p.id}), 202
     except Exception as e:
         logger.exception("enqueue failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/refresh", methods=["POST", "GET"])
+@app.route("/refresh", methods=["POST"])
 @login_required
 def refresh_route():
     try:
-        # trigger in background
         if hasattr(worker, "refresh_all_sources"):
             Thread(target=worker.refresh_all_sources, daemon=True).start()
             return jsonify({"status": "refresh_queued"}), 202
@@ -359,9 +297,9 @@ def refresh_route():
         logger.exception("refresh_route failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/start", methods=["POST", "GET"])
+@app.route("/start", methods=["POST"])
 @login_required
-def start_worker():
+def start_worker_route():
     try:
         if hasattr(worker, "start_worker_background"):
             Thread(target=worker.start_worker_background, daemon=True).start()
@@ -371,7 +309,7 @@ def start_worker():
         logger.exception("start_worker failed: %s", e)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/stop", methods=["POST", "GET"])
+@app.route("/stop", methods=["POST"])
 @login_required
 def stop_worker_route():
     try:
@@ -403,10 +341,7 @@ def health():
 @app.errorhandler(404)
 def not_found(e):
     return render_template("welcome.html", company=COMPANY), 404
-
-# -------------------------
 # Run
-# -------------------------
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     logger.info("Starting app on port %s", port)
