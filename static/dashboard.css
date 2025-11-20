@@ -1,3 +1,4 @@
+/* Base */
 body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
   background: #0d0d0d;
@@ -5,19 +6,21 @@ body {
   margin: 0;
 }
 
+/* Glass cards */
 .glass {
   background: rgba(255,255,255,0.05);
   border-radius: 20px;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
   padding: 1rem;
   margin: 1rem;
-  box-shadow: 0 4px 30px rgba(0,0,0,0.1);
+  box-shadow: 0 4px 30px rgba(0,0,0,0.2);
 }
 
+/* Buttons */
 .btn {
   border: none;
-  border-radius: 12px;
-  padding: 0.6rem 1.2rem;
+  border-radius: 14px;
+  padding: 0.8rem 1.2rem;
   margin: 0.3rem;
   font-size: 1rem;
   cursor: pointer;
@@ -25,11 +28,12 @@ body {
   color: #fff;
   transition: all 0.2s ease;
 }
-.btn:hover {
+.btn:hover, .btn:active {
   background: linear-gradient(145deg, #00ffe0, #0077ff);
   color: #000;
 }
 
+/* Toast notifications */
 .toast {
   position: fixed;
   bottom: 20px;
@@ -43,3 +47,15 @@ body {
 }
 .toast.success { color: #00ffae; }
 .toast.error { color: #ff4d4d; }
+
+/* Mobile tweaks */
+@media (max-width: 768px) {
+  .topbar h1 { font-size: 1.2rem; }
+  .btn { width: 100%; margin: 0.5rem 0; }
+  .controls, .activity, .health, .charts {
+    margin: 0.5rem;
+    padding: 0.8rem;
+  }
+  .buttons { display: flex; flex-direction: column; }
+  .enqueue input { width: 100%; margin-bottom: 0.5rem; }
+}
