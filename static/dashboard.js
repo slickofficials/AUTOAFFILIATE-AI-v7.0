@@ -69,3 +69,104 @@
                 stopBtn.classList.add("active");
             }
         } catch (e) {
+
+              console.error(e);
+    }
+
+    // Control actions
+    async function doRefresh(btn) {
+        btn.disabled = true;
+        try {
+            const res = await fetch("/refresh", { method: "POST", credentials: "same-origin" });
+            await res.json();
+            showToast("Refresh queued ✅", "success");
+        } catch (e) {
+            console.error(e);
+            showToast("Refresh failed ❌", "error");
+        } finally {
+            btn.disabled = false;
+            fetchStats(); fetchActivity(); fetchWorkerStatus();
+        }
+    }
+
+    async function doStart(btn) {
+        btn.disabled = true;
+        try {
+            const res = await fetch("/start", { method: "POST", credentials: "same-origin" });
+            await res.json();
+            showToast("Worker start requested ▶️", "success");
+        } catch (e) {
+            console.error(e);
+            showToast("Worker start failed ❌", "error");
+        } finally {
+            btn.disabled = false;
+            fetchStats(); fetchWorkerStatus();
+        }
+    }
+
+    async function doStop(btn) {
+        btn.disabled = true;
+        try {
+            const res = await fetch("/stop", { method: "POST", credentials: "same-origin" });
+            await res.json();
+            showToast("Worker stop requested ⏹", "info");
+        } catch (e) {
+            console.error(e);
+            showToast("Worker stop failed ❌", "error");
+        } finally {
+            btn.disabled = false;
+            fetchStats(); fetchWorkerStatus();
+        }
+    }
+
+    async function doEnqueue(btn) {
+        const url = enqueueUrl.value.trim();
+        if (!url) return showToast("URL required", "error");
+        btn.disabled = true;
+        try {
+            const payload = { url: url, source: "manual" };
+            const res = await fetch("/enqueue", {
+                method: "POST",
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            await res.json();
+            showToast("Link enqueued ➕", "success");
+            enqueueUrl.value = "";
+        } catch (e) {
+            console.error(e);
+            showToast("Enqueue failed ❌", "error");
+        } finally {
+            btn.disabled = false;
+            fetchStats(); fetchActivity();
+        }
+    }
+
+    // Wire main buttons
+    refreshBtn && refreshBtn.addEventListener("click", () => doRefresh(refreshBtn));
+    startBtn && startBtn.addEventListener("click", () => doStart(startBtn));
+    stopBtn && stopBtn.addEventListener("click", () => doStop(stopBtn));
+    enqueueForm && enqueueForm.addEventListener("submit", ev => {
+        ev.preventDefault();
+        doEnqueue(document.getElementById("enqueue-btn"));
+    });
+
+    // Wire dock buttons (mirror actions)
+    const dockRefresh = document.querySelector(".control-dock #refresh-btn");
+    const dockStart = document.querySelector(".control-dock #start-worker-btn");
+    const dockStop = document.querySelector(".control-dock #stop-worker-btn");
+    const dockEnqueue = document.querySelector(".control-dock #enqueue-btn");
+
+    dockRefresh && dockRefresh.addEventListener("click", () => doRefresh(dockRefresh));
+    dockStart && dockStart.addEventListener("click", () => doStart(dockStart));
+    dockStop && dockStop.addEventListener("click", () => doStop(dockStop));
+    dockEnqueue && dockEnqueue.addEventListener("click", () => doEnqueue(dockEnqueue));
+
+    // Initial load + periodic refresh
+    fetchStats();
+    fetchActivity();
+    fetchWorkerStatus();
+    setInterval(() => { fetchStats(); fetchActivity(); fetchWorkerStatus(); }, 30000);
+})();
+      
