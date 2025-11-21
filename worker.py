@@ -1,5 +1,3 @@
-# worker.py — AutoAffiliate worker (Production-ready)
-
 import os, time, json, logging, threading, requests, psycopg
 from psycopg.rows import dict_row
 from datetime import datetime, timezone, timedelta
@@ -13,11 +11,6 @@ try:
 except Exception:
     OpenAI = None
 
-try:
-    import tweepy
-except Exception:
-    tweepy = None
-
 # ---------- Logging ----------
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -26,46 +19,35 @@ logger = logging.getLogger("worker")
 # ---------- Environment ----------
 DB_URL = os.getenv("DATABASE_URL")
 
-# AWIN
 AWIN_PUBLISHER_ID = os.getenv("AWIN_PUBLISHER_ID")
 AWIN_API_TOKEN = os.getenv("AWIN_API_TOKEN")
 AWIN_AFFILIATE_ID = os.getenv("AWIN_AFFILIATE_ID")
 AWIN_CLICKREF = os.getenv("AWIN_CLICKREF", "autoaffiliate")
 
-# Rakuten
 RAKUTEN_SITE_ID = os.getenv("RAKUTEN_SITE_ID")
 RAKUTEN_APP_TOKEN_KEY = os.getenv("RAKUTEN_APP_TOKEN_KEY")
-RAKUTEN_ACCESS_TOKEN = os.getenv("RAKUTEN_ACCESS_TOKEN")
 RAKUTEN_REFRESH_TOKEN = os.getenv("RAKUTEN_REFRESH_TOKEN")
 RAKUTEN_CLICKREF = os.getenv("RAKUTEN_CLICKREF", "autoaffiliate")
 
-# Social
 OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 HEYGEN_KEY = os.getenv("HEYGEN_API_KEY")
+
 FB_PAGE_ID = os.getenv("FB_PAGE_ID")
 FB_TOKEN = os.getenv("FB_ACCESS_TOKEN")
 TWITTER_BEARER_TOKEN = os.getenv("TWITTER_BEARER_TOKEN")
-TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
-TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
-TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
-TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 IFTTT_KEY = os.getenv("IFTTT_KEY")
 
-DEFAULT_CADENCE_SECONDS = int(os.getenv("DEFAULT_CADENCE_SECONDS", str(1800)))
-DEBUG_REDIRECTS = os.getenv("DEBUG_REDIRECTS", "0") == "1"
+DEFAULT_CADENCE_SECONDS = int(os.getenv("DEFAULT_CADENCE_SECONDS", "1800"))
 
 openai_client = OpenAI(api_key=OPENAI_KEY) if (OPENAI_KEY and OpenAI) else None
 
 _worker_running = False
 _stop_requested = False
 
-ROTATION = [("awin","B"),("rakuten","2"),("awin","C"),("rakuten","1"),("awin","A")]
-
 app = Flask(__name__)
 def get_db_conn():
-    if not DB_URL: raise RuntimeError("DATABASE_URL not set")
     conn = psycopg.connect(DB_URL, row_factory=dict_row)
     return conn, conn.cursor()
 
@@ -74,7 +56,7 @@ def run_write(sql, params=()):
     try:
         cur.execute(sql, params); conn.commit()
     except Exception:
-        conn.rollback(); logger.exception("DB write failed: %s", sql); raise
+        conn.rollback(); logger.exception("DB write failed"); raise
     finally: conn.close()
 
 def run_read(sql, params=()):
@@ -82,7 +64,7 @@ def run_read(sql, params=()):
     cur.execute(sql, params); rows = cur.fetchall(); conn.close(); return rows
 
 def ensure_tables():
-    safe = """
+    schema = """
     CREATE TABLE IF NOT EXISTS posts (
       id SERIAL PRIMARY KEY, url TEXT UNIQUE NOT NULL, source TEXT,
       status TEXT DEFAULT 'pending', created_at TIMESTAMPTZ DEFAULT now(),
@@ -96,42 +78,31 @@ def ensure_tables():
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY, setting_key TEXT UNIQUE, value TEXT);
     """
-    conn, cur = get_db_conn(); cur.execute(safe); conn.commit(); conn.close()
-
-def db_get_setting(k,fallback=None):
-    try:
-        conn,cur=get_db_conn();cur.execute("SELECT value FROM settings WHERE key=%s",(k,))
-        r=cur.fetchone();conn.close();return r["value"] if r else fallback
-    except: logger.exception("db_get_setting");return fallback
-
-def db_set_setting(k,v):
-    try:
-        conn,cur=get_db_conn()
-        cur.execute("""INSERT INTO settings(key,setting_key,value)
-                       VALUES(%s,%s,%s)
-                       ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value""",(k,k,str(v)))
-        conn.commit();conn.close();return True
-    except: logger.exception("db_set_setting");return False
+    conn, cur = get_db_conn(); cur.execute(schema); conn.commit(); conn.close()
 
 ensure_tables()
-POST_INTERVAL_SECONDS=int(db_get_setting("post_interval_seconds",fallback=str(DEFAULT_CADENCE_SECONDS)))
-def requests_get(url,**kwargs): kwargs.setdefault("timeout",15); return requests.get(url,**kwargs)
+def requests_get(url, **kwargs): kwargs.setdefault("timeout", 15); return requests.get(url, **kwargs)
 def is_valid_https_url(u): return bool(u and u.startswith("https://") and len(u)<4000)
 def contains_affiliate_id(u):
-    if not u: return False; u=u.lower()
-    return any(s in u for s in [str(AWIN_PUBLISHER_ID),str(AWIN_AFFILIATE_ID),str(RAKUTEN_SITE_ID),
+    if not u: return False
+    u=u.lower()
+    return any(s in u for s in [str(AWIN_PUBLISHER_ID), str(AWIN_AFFILIATE_ID), str(RAKUTEN_SITE_ID),
                                 "linksynergy","awin","rakuten","tidd.ly","trk."])
-def follow_and_check(u): 
+def follow_and_check(u):
     try: r=requests_get(u,allow_redirects=True); return r.url
     except: logger.exception("follow_and_check failed"); return None
+def is_live_url(u):
+    try: r=requests.get(u,timeout=10); return r.status_code==200
+    except: return False
 def validate_and_normalize_link(u):
     f=follow_and_check(u) if not is_valid_https_url(u) else u
-    return f if f and is_valid_https_url(f) and contains_affiliate_id(f) else None
-def log_failed_link(u,src,reason): 
+    return f if f and is_valid_https_url(f) and contains_affiliate_id(f) and is_live_url(f) else None
+def log_failed_link(u,src,reason):
     try: run_write("INSERT INTO failed_links(source,attempted_url,reason) VALUES(%s,%s,%s)",(src,u,reason))
     except: logger.exception("log_failed_link failed")
 def save_links_to_db(links,source="affiliate"):
-    if not links: return 0; conn,cur=get_db_conn(); added=0
+    if not links: return 0
+    conn,cur=get_db_conn(); added=0
     for l in links:
         norm=validate_and_normalize_link(l)
         if not norm: log_failed_link(l,source,"Invalid"); continue
@@ -144,16 +115,17 @@ def pull_awin_deeplinks(limit=4):
         for _ in range(limit):
             url=f"https://www.awin1.com/cread.php?awinmid={AWIN_PUBLISHER_ID}&awinaffid={AWIN_AFFILIATE_ID}&clickref={AWIN_CLICKREF}"
             r=requests_get(url,allow_redirects=True); f=r.url
-            if f and is_valid_https_url(f) and contains_affiliate_id(f): out.append(f)
+            if f and validate_and_normalize_link(f): out.append(f)
             else: log_failed_link(f or url,"awin","Fallback invalid")
     return out
 
 _rakuten_access_token=None; _rakuten_token_expiry=0
 def rakuten_refresh_access_token():
     global _rakuten_access_token,_rakuten_token_expiry
-    scope=RAKUTEN_SITE_ID; headers={"Authorization":f"Bearer {RAKUTEN_APP_TOKEN_KEY}","Content-Type":"application/x-www-form-urlencoded"}
+    scope=RAKUTEN_SITE_ID
+    headers={"Authorization":f"Bearer {RAKUTEN_APP_TOKEN_KEY}","Content-Type":"application/x-www-form-urlencoded"}
     body=f"grant_type=refresh_token&refresh_token={quote_plus(RAKUTEN_REFRESH_TOKEN)}&scope={quote_plus(scope)}"
-    r=requests.post("https://api.linksynergy.com/token",headers=headers,data=body)
+    r=requests.post("https://api.linksynergy.com/token",headers=headers,data=body,timeout=20)
     j=r.json(); tok=j.get("access_token"); ttl=int(j.get("expires_in",3600))
     _rakuten_access_token=tok; _rakuten_token_expiry=time.time()+ttl-60
     os.environ["RAKUTEN_ACCESS_TOKEN"]=tok; os.environ["RAKUTEN_REFRESH_TOKEN"]=j.get("refresh_token",RAKUTEN_REFRESH_TOKEN)
@@ -161,80 +133,34 @@ def rakuten_refresh_access_token():
 def get_rakuten_access_token():
     return _rakuten_access_token if _rakuten_access_token and time.time()<_rakuten_token_expiry else rakuten_refresh_access_token()
 def rakuten_product_search(keyword,max_results=10):
-    tok=get_rakuten_access_token();
-    def rakuten_product_search(keyword, max_results=10):
-    tok = get_rakuten_access_token()
-    if not tok:
-        logger.error("Rakuten access token unavailable")
-        return []
-    url = f"https://api.linksynergy.com/productsearch?keyword={quote_plus(keyword)}&max={int(max_results)}"
-    headers = {"Authorization": f"Bearer {tok}"}
-    try:
-        resp = requests.get(url, headers=headers, timeout=20)
-        if resp.status_code == 401:
-            tok = rakuten_refresh_access_token()
-            if not tok: return []
-            headers = {"Authorization": f"Bearer {tok}"}
-            resp = requests.get(url, headers=headers, timeout=20)
-        if resp.status_code != 200:
-            logger.error("Rakuten product search failed: %s %s", resp.status_code, resp.text)
-            return []
-        data = resp.json()
-        links = []
-        for item in data.get("data", []):
-            link = item.get("linkUrl") or item.get("url") or item.get("productUrl")
-            if link:
-                if "linksynergy.com" in link and "subid=" not in link and RAKUTEN_CLICKREF:
-                    sep = "&" if "?" in link else "?"
-                    link = f"{link}{sep}subid={quote_plus(RAKUTEN_CLICKREF)}"
-                links.append(link)
-        return links
-    except Exception:
-        logger.exception("rakuten_product_search exception")
-        return []
+    tok=get_rakuten_access_token(); 
+    if not tok: return []
+    url=f"https://api.linksynergy.com/productsearch?keyword={quote_plus(keyword)}&max={int(max_results)}"
+    headers={"Authorization":f"Bearer {tok}"}
+    resp=requests.get(url,headers=headers,timeout=20)
+    if resp.status_code!=200: log_failed_link(url,"rakuten",f"HTTP {resp.status_code}"); return []
+    data=resp.json(); links=[]
+    for item in data.get("data",[]):
+        link=item.get("linkUrl") or item.get("url")
+        if link and validate_and_normalize_link(link): links.append(link)
+    return links
 def generate_caption(link: str) -> str:
-    if not openai_client:
-        return f"Hot deal — check this out: {link}"
+    if not openai_client: return f"Hot deal — check this out: {link}"
     try:
-        prompt = f"Create a short energetic social caption (one sentence, include 1 emoji, 1 CTA) for:\n{link}"
-        resp = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role":"user","content":prompt}],
-            max_tokens=60
-        )
-        text = ""
-        if resp and getattr(resp,"choices",None):
-            choice = resp.choices[0]
-            msg = getattr(choice,"message",None)
-            if msg and getattr(msg,"content",None):
-                text = msg.content.strip()
-        if not text: text = f"Hot deal — check this out: {link}"
-        if link not in text: text = f"{text} {link}"
+        prompt=f"Create a short energetic social caption (one sentence, include 1 emoji, 1 CTA) for:\n{link}"
+        resp=openai_client.chat.completions.create(model="gpt-4o-mini",messages=[{"role":"user","content":prompt}],max_tokens=60)
+        text=resp.choices[0].message.content.strip() if resp and resp.choices else ""
+        if not text: text=f"Hot deal — check this out: {link}"
+        if link not in text: text=f"{text} {link}"
         return text
-    except Exception:
-        logger.exception("OpenAI caption failed")
-        return f"Hot deal — check this out: {link}"
-
-def generate_video(caption: str, link: str) -> Optional[str]:
-    if not HEYGEN_KEY: return None
-    try:
-        payload = {"script": caption, "voice": "en_us_1", "format": "mp4", "resolution": "1080p"}
-        headers = {"Authorization": f"Bearer {HEYGEN_KEY}", "Content-Type": "application/json"}
-        r = requests.post("https://api.heygen.com/v1/video", json=payload, headers=headers, timeout=30)
-        if r.status_code in (200,201):
-            data = r.json(); return data.get("video_url") or data.get("url")
-        logger.warning("HeyGen non-2xx: %s %s", r.status_code, r.text[:300])
-    except Exception:
-        logger.exception("HeyGen video generation failed")
-    return None
+    except: logger.exception("OpenAI caption failed"); return f"Hot deal — check this out: {link}"
 def post_to_facebook(message: str, link: str) -> dict:
     if not FB_TOKEN or not FB_PAGE_ID: return {"error":"FB creds not set"}
     try:
         url=f"https://graph.facebook.com/{FB_PAGE_ID}/feed"
         resp=requests.post(url,data={"message":message,"link":link,"access_token":FB_TOKEN},timeout=15)
         data=resp.json() if resp.headers.get("content-type","").startswith("application/json") else {"status_code":resp.status_code}
-        if resp.status_code==200 and "id" in data:
-            logger.info("Posted to Facebook: %s",data["id"])
+        if resp.status_code==200 and "id" in data: logger.info("Posted to Facebook: %s",data["id"])
         else: log_failed_link(link,"facebook",f"HTTP {resp.status_code}")
         return data
     except Exception:
@@ -276,10 +202,10 @@ def post_to_ifttt(event_name: str, value1: str, value2="", value3="") -> dict:
     except Exception:
         logger.exception("IFTTT posting error"); log_failed_link(value1,"ifttt","Exception"); return {"error":"ifttt_exception"}
 def pull_and_post():
-    for source, sub in ROTATION:
+    for source, sub in [("awin","B"),("rakuten","2")]:
         links=[]
         if source=="awin": links=pull_awin_deeplinks(limit=4)
-        elif source=="rakuten": links=pull_rakuten_deeplinks(limit=4)
+        elif source=="rakuten": links=rakuten_product_search("laptop",max_results=4)
         if not links:
             log_failed_link(f"{source}-batch",source,"No links pulled"); continue
         save_links_to_db(links,source=source)
@@ -301,54 +227,25 @@ def start_worker_background():
     while not _stop_requested:
         try: pull_and_post()
         except Exception: logger.exception("Worker iteration failed")
-        time.sleep(POST_INTERVAL_SECONDS)
+        time.sleep(DEFAULT_CADENCE_SECONDS)
     _worker_running=False
 
-def stop_worker(): global _stop_requested; _stop_requested=True
+def stop_worker(): 
+    global _stop_requested; _stop_requested=True
 
 @app.route("/status")
-def status(): return jsonify({"running":_worker_running,"interval":POST_INTERVAL_SECONDS})
-
+def status(): 
+    return jsonify({"running":_worker_running,"interval":DEFAULT_CADENCE_SECONDS})
 @app.route("/start",methods=["POST"])
-def start(): threading.Thread(target=start_worker_background,daemon=True).start(); return
-    @app.route("/start", methods=["POST"])
-def start():
-    threading.Thread(target=start_worker_background, daemon=True).start()
-    return jsonify({"message": "Worker started"}), 200
-
-@app.route("/stop", methods=["POST"])
-def stop():
-    stop_worker()
-    return jsonify({"message": "Worker stop requested"}), 200
-
-@app.route("/summary", methods=["GET"])
-def summary():
-    days = int(request.args.get("days", 1))
-    since = datetime.now(timezone.utc) - timedelta(days=days)
-    rows = run_read(
-        "SELECT source, COUNT(*) AS count FROM failed_links WHERE created_at >= %s GROUP BY source",
-        (since,),
-    )
-    summary = {"date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "sources": {}}
-    for r in rows:
-        summary["sources"][r["source"]] = r["count"]
-    for src in ("awin", "rakuten", "facebook", "twitter", "telegram", "ifttt"):
-        summary["sources"].setdefault(src, 0)
-    return jsonify(summary)
-def get_stats():
-    pending = run_read("SELECT COUNT(*) as cnt FROM posts WHERE status='pending'")[0]["cnt"]
-    posted = run_read("SELECT COUNT(*) as cnt FROM posts WHERE status='posted'")[0]["cnt"]
-    return {"pending": pending, "posted": posted}
-
+def start(): threading.Thread(target=start_worker_background,daemon=True).start(); return jsonify({"message":"Worker started"})
+@app.route("/stop",methods=["POST"])
+def stop(): stop_worker(); return jsonify({"message":"Worker stop requested"})
 def main():
     ensure_tables()
-    logger.info("Worker loaded, initial stats: %s", get_stats())
-    port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port)
+    logger.info("Worker loaded, posts: %s", run_read("SELECT COUNT(*) as cnt FROM posts")[0]["cnt"])
+    port=int(os.getenv("PORT","5000"))
+    app.run(host="0.0.0.0",port=port)
 
-if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        stop_worker()
-        logger.info("Worker stopped via KeyboardInterrupt")
+if __name__=="__main__":
+    try: main()
+    except KeyboardInterrupt: stop_worker(); logger.info("Worker stopped via KeyboardInterrupt")
