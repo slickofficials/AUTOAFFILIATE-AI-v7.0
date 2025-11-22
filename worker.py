@@ -83,7 +83,8 @@ def db_set_setting(k,v):
                        ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value""",(k,str(v)))
         conn.commit();conn.close();return True
     except: logger.exception("db_set_setting");return False 
-    def requests_get(url, **kwargs):
+        
+def requests_get(url, **kwargs):
     kwargs.setdefault("timeout", 15)
     return requests.get(url, **kwargs)
 
