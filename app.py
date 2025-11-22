@@ -687,187 +687,193 @@ def post_next_pending() -> bool:
         except Exception:
             logger.exception("Telegram posting error")
 
-        # IFTTT (TikTok)
-        try:
-            trigger_ifttt("post_tiktok", value1=caption, value2=redirect_link)
-        except Exception:
-            logger.exception("IFTTT error")
-
-        # YouTube fallback if video_ref provided
-        if video_ref and isinstance(video_ref, str) and video_ref.startswith("http"):
-            try:
-                post_youtube_short(caption, video_ref)
-            except Exception:
-                logger.exception("YouTube fallback error")
-
-        status_str = "sent" if posted_any else "failed"
-        meta_obj = {"caption": caption, "video": video_ref, "posted_via": "auto"}
-        try:
-            cur.execute("UPDATE posts SET status=%s, posted_at=%s, meta=%s WHERE id=%s",
-                        (status_str, datetime.now(timezone.utc), json.dumps(meta_obj), post_id))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            logger.exception("Failed to update post status")
-        send_alert("POSTED" if posted_any else "POST FAILED", f"{redirect_link} | video:{bool(video_ref)}")
-        return posted_any
-    except Exception:
-        conn.rollback()
-        logger.exception("post_next_pending failed")
+    # ---------- IFTTT ----------
+def trigger_ifttt(event: str, value1=None, value2=None, value3=None) -> bool:
+    if not IFTTT_KEY:
+        logger.debug("IFTTT not configured")
         return False
-    finally:
-        conn.close()
-
-# ---------- Refresh all sources ----------
-def refresh_all_sources() -> dict:
-    logger.info("Refreshing affiliate sources (rotation)")
-    links = []
     try:
-        for provider, _tag in ROTATION:
-            try:
-                if provider == "awin":
-                    urls = pull_awin_deeplinks(limit=4)
-                    logger.info("AWIN pulled %d links", len(urls))
-                    links.extend(urls)
-                elif provider == "rakuten":
-                    urls = pull_rakuten_deeplinks(limit=4)
-                    logger.info("Rakuten pulled %d links", len(urls))
-                    links.extend(urls)
-                time.sleep(0.2)
-            except Exception:
-                logger.exception("refresh loop provider error: %s", provider)
-        saved = save_links_to_db(links, source="affiliate") if links else 0
-        logger.info("Total new links pulled: %d", saved)
-        return {"new_links": saved}
+        url = f"https://maker.ifttt.com/trigger/{event}/json/with/key/{IFTTT_KEY}"
+        payload = {"value1": value1, "value2": value2, "value3": value3}
+        r = requests_post(url, json=payload, timeout=10)
+        logger.info("IFTTT trigger %s status=%s", event, r.status_code)
+        return r.status_code in (200, 202)
     except Exception:
-        logger.exception("refresh_all_sources failed")
-        return {"new_links": 0}
+        logger.exception("IFTTT trigger failed")
+        return False
 
-# ---------- Stats ----------
-def get_stats() -> dict:
+
+# ---------- Posting pipeline ----------
+def post_to_all_socials(caption: str, link: str):
+    results = {}
+
     try:
-        conn, cur = get_db_conn()
-        cur.execute("SELECT COUNT(*) AS total FROM posts")
-        total = cur.fetchone()["total"] or 0
-        cur.execute("SELECT COUNT(*) AS pending FROM posts WHERE status='pending'")
-        pending = cur.fetchone()["pending"] or 0
-        cur.execute("SELECT COUNT(*) AS sent FROM posts WHERE status='sent'")
-        sent = cur.fetchone()["sent"] or 0
-        cur.execute("SELECT COUNT(*) AS failed FROM posts WHERE status='failed'")
-        failed = cur.fetchone()["failed"] or 0
-        cur.execute("SELECT posted_at FROM posts WHERE status='sent' ORDER BY posted_at DESC LIMIT 1")
-        row = cur.fetchone()
-        last_posted_at = row["posted_at"].astimezone(timezone.utc).isoformat() if (row and row["posted_at"]) else None
-        conn.close()
-        return {
-            "total": total,
-            "pending": pending,
-            "sent": sent,
-            "failed": failed,
-            "last_posted_at": last_posted_at
-        }
-    except Exception:
-        logger.exception("get_stats failed")
-        return {"total": 0, "pending": 0, "sent": 0, "failed": 0}
+        results["facebook"] = post_facebook(caption)
+    except:
+        results["facebook"] = False
 
-# ---------- Worker loop (thread) ----------
-def _worker_loop():
+    try:
+        results["instagram"] = post_instagram(caption)
+    except:
+        results["instagram"] = False
+
+    try:
+        results["twitter"] = post_twitter(caption)
+    except:
+        results["twitter"] = False
+
+    try:
+        results["telegram"] = post_telegram(caption)
+    except:
+        results["telegram"] = False
+
+    try:
+        results["ifttt"] = trigger_ifttt("autoaffiliate", caption, link)
+    except:
+        results["ifttt"] = False
+
+    logger.info("Social posting results: %s", results)
+    return results
+
+
+# ---------- Worker core ----------
+def process_next_post():
+    conn, cur = get_db_conn()
+    post = None
+    try:
+        cur.execute("SELECT * FROM posts WHERE status='pending' ORDER BY id ASC LIMIT 1")
+        post = cur.fetchone()
+        if not post:
+            conn.close()
+            return False
+
+        post_id = post["id"]
+        url = post["url"]
+
+        logger.info("Processing post #%s %s", post_id, url)
+
+        # 1. Generate caption
+        caption = generate_caption(url)
+
+        # 2. Generate HeyGen video (optional)
+        video_url = generate_heygen_avatar_video(caption)
+
+        # 3. Post everywhere
+        results = post_to_all_socials(caption, url)
+
+        # 4. Save result metadata
+        cur.execute("""
+            UPDATE posts SET 
+                status='posted', 
+                posted_at=%s, 
+                meta=%s
+            WHERE id=%s
+        """, (datetime.now(timezone.utc),
+              json.dumps({"caption": caption, "video": video_url, "results": results}),
+              post_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    except Exception:
+        logger.exception("process_next_post failure")
+        try:
+            conn.rollback()
+        except:
+            pass
+        try:
+            conn.close()
+        except:
+            pass
+        return False
+
+
+def worker_loop():
     logger.info("Worker loop started")
-    next_pull = datetime.now(timezone.utc) - timedelta(seconds=5)
-    POST_INTERVAL_SECONDS = int(db_get_setting("post_interval_seconds", fallback=str(DEFAULT_CADENCE_SECONDS)))
     while not _worker_stop.is_set():
         try:
-            now = datetime.now(timezone.utc)
-            if now >= next_pull:
-                try:
-                    refresh_all_sources()
-                except Exception:
-                    logger.exception("refresh_all_sources top-level error")
-                next_pull = now + timedelta(minutes=PULL_INTERVAL_MINUTES)
-            posted = post_next_pending()
-            if posted:
-                # recalc cadence each posted item to allow dynamic change via settings
-                POST_INTERVAL_SECONDS = int(db_get_setting("post_interval_seconds", fallback=str(DEFAULT_CADENCE_SECONDS)))
-                # sleep but break early if stop requested
-                for _ in range(max(1, int(POST_INTERVAL_SECONDS))):
-                    if _worker_stop.is_set():
-                        break
-                    time.sleep(1)
-            else:
-                # nothing to post; sleep short
-                for _ in range(max(1, int(SLEEP_ON_EMPTY))):
-                    if _worker_stop.is_set():
-                        break
-                    time.sleep(1)
+            ok = process_next_post()
+            if not ok:
+                logger.info("No pending posts — sleeping %s sec", SLEEP_ON_EMPTY)
+                time.sleep(SLEEP_ON_EMPTY)
         except Exception:
-            logger.exception("Worker loop error, sleeping 5s")
-            time.sleep(5)
+            logger.exception("worker_loop error")
+            time.sleep(10)
     logger.info("Worker loop stopped")
 
-def start_worker_background():
-    global _worker_thread, _worker_stop
-    if _worker_thread and _worker_thread.is_alive():
-        logger.info("Worker already running")
-        return False
-    _worker_stop.clear()
-    _worker_thread = threading.Thread(target=_worker_loop, daemon=True)
-    _worker_thread.start()
-    send_alert("WORKER START", "Background worker started")
-    return True
 
-def stop_worker_background():
-    global _worker_thread, _worker_stop
-    if not _worker_thread:
-        logger.info("No worker thread")
-        return False
-    _worker_stop.set()
-    _worker_thread.join(timeout=15)
-    send_alert("WORKER STOP", "Background worker stopped")
-    return True
-
-# ---------- Redirect handler (to be used by your web app route) ----------
-def handle_redirect(post_id: int, ip: str = None, ua: str = None) -> Optional[str]:
-    """
-    Record click and return URL to redirect to (final affiliate URL)
-    """
-    conn, cur = get_db_conn()
-    try:
-        cur.execute("SELECT url FROM posts WHERE id=%s", (post_id,))
-        row = cur.fetchone()
-        if not row:
-            return None
-        url = row["url"]
+# ---------- Rotation pulling ----------
+def run_rotation_once():
+    logger.info("Running affiliate rotation")
+    for src, code in ROTATION:
         try:
-            cur.execute("INSERT INTO clicks (post_id, ip, user_agent, created_at) VALUES (%s,%s,%s,%s)",
-                        (post_id, ip or "", ua or "", datetime.now(timezone.utc)))
-            conn.commit()
+            if src == "awin":
+                links = pull_awin_deeplinks()
+            else:
+                links = pull_rakuten_deeplinks()
+            save_links_to_db(links, source=f"{src}-{code}")
         except Exception:
-            conn.rollback()
-            logger.exception("Failed to record click")
-        return url
-    except Exception:
-        logger.exception("handle_redirect failed")
-        return None
-    finally:
-        conn.close()
+            logger.exception("Rotation step failed for %s-%s", src, code)
 
-# ---------- Module entry / quick local test ----------
-if __name__ == "__main__":
-    logger.info("Starting app.py — initializing DB and worker helpers")
-    ensure_tables()
-    logger.info("Initial stats: %s", get_stats())
-    # DO NOT start worker automatically in production unless desired:
-    auto_start = os.getenv("AUTO_START_WORKER", "1") == "1"
-    if auto_start:
-        started = start_worker_background()
-        logger.info("Worker auto-started: %s", started)
+
+def schedule_rotation():
+    while not _worker_stop.is_set():
+        try:
+            run_rotation_once()
+        except Exception:
+            logger.exception("schedule_rotation error")
+        time.sleep(PULL_INTERVAL_MINUTES * 60)
+
+
+# ---------- Flask API ----------
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return jsonify({"status": "running", "worker": _worker_thread.is_alive() if _worker_thread else False})
+
+@app.route("/pull")
+def pull_now():
+    run_rotation_once()
+    return jsonify({"status": "ok", "message": "Pulled affiliate links"})
+
+@app.route("/run-once")
+def run_once():
+    ok = process_next_post()
+    return jsonify({"status": "ok", "processed": ok})
+
+@app.route("/settings", methods=["GET", "POST"])
+def api_settings():
+    if request.method == "GET":
+        k = request.args.get("key")
+        return jsonify({"key": k, "value": db_get_setting(k)})
     else:
-        logger.info("Worker not auto-started (set AUTO_START_WORKER=1 to auto start)")
+        body = request.json or {}
+        k = body.get("key")
+        v = body.get("value")
+        db_set_setting(k, v)
+        return jsonify({"status": "saved", "key": k, "value": v})
 
-    # simple CLI loop for manual testing in local dev (not used on render)
-    try:
-        while True:
-            time.sleep(10)
-    except KeyboardInterrupt:
-        logger.info("KeyboardInterrupt — stopping worker")
-        stop_worker_background()
+
+# ---------- App start ----------
+def start_worker():
+    global _worker_thread
+    if _worker_thread and _worker_thread.is_alive():
+        return
+    t = threading.Thread(target=worker_loop, daemon=True)
+    t.start()
+    _worker_thread = t
+
+
+def start_rotation_scheduler():
+    t = threading.Thread(target=schedule_rotation, daemon=True)
+    t.start()
+
+
+if __name__ == "__main__":
+    ensure_tables()
+    start_worker()
+    start_rotation_scheduler()
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")))
